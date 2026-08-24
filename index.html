@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Avril Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #fbf7f2;
+    --card: #ffffff;
+    --ink: #33302e;
+    --muted: #8a8380;
+    --border: #ece5de;
+    --nap: #a8c8e8;
+    --nap-4: #c9b8e8;
+    --poop: #c9a876;
+    --drink: #7fc9c0;
+    --accent: #e8909f;
+    --accent-dark: #d1728a;
+    --danger: #d1728a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding-bottom: 60px;
+  }
+  header {
+    padding: 20px 16px 8px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+  header .subtitle {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 4px;
+  }
+  main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 12px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-top: 14px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  input[type="time"],
+  input[type="date"],
+  input[type="number"],
+  select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .row > * { flex: 1; }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 0.9rem;
+  }
+  .switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 24px;
+    cursor: pointer;
+    transition: .2s;
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    height: 18px; width: 18px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: .2s;
+  }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider::before { transform: translateX(20px); }
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    padding: 11px 14px;
+    font-weight: 600;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:active { background: var(--accent-dark); }
+  .btn-secondary {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+  }
+  .schedule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .schedule-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 10px;
+    font-size: 0.92rem;
+  }
+  .schedule-item .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--nap);
+    margin-right: 8px;
+  }
+  .schedule-item.bedtime .dot { background: var(--accent); }
+  .schedule-item .times { color: var(--muted); }
+  .empty-hint {
+    color: var(--muted);
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 8px 0;
+  }
+  .timeline-wrap {
+    position: relative;
+    height: 44px;
+    background: var(--bg);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .timeline-block {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    border-radius: 6px;
+    background: var(--nap);
+  }
+  .timeline-block.nap4 { background: var(--nap-4); }
+  .timeline-block.event {
+    top: 2px;
+    bottom: 2px;
+    width: 3px;
+    border-radius: 2px;
+  }
+  .timeline-block.poop { background: var(--poop); }
+  .timeline-block.drink { background: var(--drink); }
+  .timeline-now {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent-dark);
+  }
+  .timeline-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend .sw { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  ul.log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  ul.log-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 10px;
+    font-size: 0.92rem;
+  }
+  .log-detail { color: var(--muted); font-size: 0.85rem; }
+  .delete-btn {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 1.1rem;
+    padding: 2px 6px;
+    line-height: 1;
+  }
+  .add-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .add-form > * { flex: 1; min-width: 90px; }
+  .status {
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 10px;
+    min-height: 1em;
+  }
+  .config-warning {
+    background: #fdecea;
+    border: 1px solid #f3c4bd;
+    color: #8a2e21;
+    padding: 12px;
+    border-radius: 10px;
+    margin: 14px 12px 0;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌙 Avril Tracker</h1>
+  <div class="subtitle">naps · poops · feeds</div>
+</header>
+
+<div id="config-warning" class="config-warning" style="display:none">
+  Supabase isn't configured yet. Fill in <code>SUPABASE_URL</code> and
+  <code>SUPABASE_ANON_KEY</code> near the top of the script in
+  <code>index.html</code>.
+</div>
+
+<main>
+  <div class="card">
+    <h2>📅 Day</h2>
+    <label for="date-input">Date</label>
+    <input type="date" id="date-input">
+  </div>
+
+  <div class="card">
+    <h2>⏰ Wake time</h2>
+    <label for="wake-input">This morning's wake-up</label>
+    <input type="time" id="wake-input">
+    <div class="toggle-row">
+      <span>4th nap</span>
+      <label class="switch">
+        <input type="checkbox" id="nap4-toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>😴 Estimated nap schedule</h2>
+    <div id="schedule-list" class="schedule-list">
+      <div class="empty-hint">Enter a wake time to see estimated naps</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📊 Timeline</h2>
+    <div class="timeline-wrap" id="timeline"></div>
+    <div class="timeline-labels">
+      <span>6am</span><span>12pm</span><span>6pm</span><span>12am</span>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--nap)"></i>naps</span>
+      <span><i class="sw" style="background:var(--nap-4)"></i>nap 4</span>
+      <span><i class="sw" style="background:var(--poop)"></i>poop</span>
+      <span><i class="sw" style="background:var(--drink)"></i>drink</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>💩 Poop log</h2>
+    <div class="add-form">
+      <div>
+        <label for="poop-time">Time</label>
+        <input type="time" id="poop-time">
+      </div>
+      <button class="btn-primary" id="add-poop-btn" style="align-self:flex-end">Log poop</button>
+    </div>
+    <ul class="log-list" id="poop-list" style="margin-top:12px"></ul>
+  </div>
+
+  <div class="card">
+    <h2>🍼 Drink log</h2>
+    <div class="add-form">
+      <div>
+        <label for="drink-time">Time</label>
+        <input type="time" id="drink-time">
+      </div>
+      <div>
+        <label for="drink-type">Type</label>
+        <select id="drink-type">
+          <option value="volume">Volume (ml)</option>
+          <option value="breastfeed">Breastfeed</option>
+        </select>
+      </div>
+    </div>
+    <div class="add-form" id="volume-fields">
+      <div>
+        <label for="drink-volume">Amount (ml)</label>
+        <input type="number" id="drink-volume" min="0" step="5" placeholder="e.g. 120">
+      </div>
+    </div>
+    <div class="add-form" id="breastfeed-fields" style="display:none">
+      <div>
+        <label for="drink-minutes">Minutes</label>
+        <input type="number" id="drink-minutes" min="0" step="1" placeholder="e.g. 15">
+      </div>
+      <div>
+        <label for="drink-amount">Amount (optional)</label>
+        <input type="text" id="drink-amount" placeholder="e.g. both sides">
+      </div>
+    </div>
+    <button class="btn-primary" id="add-drink-btn" style="margin-top:10px; width:100%">Log drink</button>
+    <ul class="log-list" id="drink-list" style="margin-top:12px"></ul>
+  </div>
+
+  <div class="status" id="status"></div>
+</main>
+
+<script>
+// ---------------------------------------------------------------------
+// Config — fill these in with your Supabase project's URL and anon key
+// (Project Settings → API in the Supabase dashboard).
+// ---------------------------------------------------------------------
+const SUPABASE_URL = "SUPABASE_URL";
+const SUPABASE_ANON_KEY = "SUPABASE_ANON_KEY";
+// ---------------------------------------------------------------------
+
+const AWAKE_WINDOW_MIN = 120;       // 2h awake before each nap
+const NAP_DURATIONS_MIN = [90, 90, 30]; // nap 1, 2, 3
+const NAP4_DURATION_MIN = 30;
+const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
+
+let supabaseClient = null;
+const configured = SUPABASE_URL !== "SUPABASE_URL" && SUPABASE_ANON_KEY !== "SUPABASE_ANON_KEY";
+if (configured) {
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  document.getElementById("config-warning").style.display = "block";
+}
+
+// ---- state -------------------------------------------------------------
+let state = {
+  date: todayISO(),
+  wakeTime: "",
+  nap4Enabled: false,
+  poops: [],
+  drinks: [],
+};
+let loading = false;
+
+function todayISO() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function nowHHMM() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+// ---- time helpers --------------------------------------------------------
+function toMinutes(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+function toHHMM(mins) {
+  mins = ((mins % 1440) + 1440) % 1440;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+}
+function formatDisplay(hhmm) {
+  if (!hhmm) return "--";
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+// ---- schedule computation --------------------------------------------
+function computeSchedule(wakeTime, nap4Enabled) {
+  const wakeMin = toMinutes(wakeTime);
+  if (wakeMin === null) return null;
+
+  const naps = [];
+  let cursor = wakeMin;
+  for (let i = 0; i < NAP_DURATIONS_MIN.length; i++) {
+    const start = cursor + AWAKE_WINDOW_MIN;
+    const end = start + NAP_DURATIONS_MIN[i];
+    naps.push({ label: `Nap ${i + 1}`, start, end });
+    cursor = end;
+  }
+  if (nap4Enabled) {
+    const start = cursor + AWAKE_WINDOW_MIN;
+    const end = start + NAP4_DURATION_MIN;
+    naps.push({ label: "Nap 4", start, end, isNap4: true });
+    cursor = end;
+  }
+  const bedtime = cursor + BEDTIME_GAP_MIN;
+  return { naps, bedtime };
+}
+
+// ---- rendering ---------------------------------------------------------
+function render() {
+  document.getElementById("date-input").value = state.date;
+  document.getElementById("wake-input").value = state.wakeTime || "";
+  document.getElementById("nap4-toggle").checked = state.nap4Enabled;
+
+  renderSchedule();
+  renderTimeline();
+  renderPoops();
+  renderDrinks();
+}
+
+function renderSchedule() {
+  const el = document.getElementById("schedule-list");
+  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  if (!sched) {
+    el.innerHTML = `<div class="empty-hint">Enter a wake time to see estimated naps</div>`;
+    return;
+  }
+  let html = "";
+  sched.naps.forEach(nap => {
+    html += `<div class="schedule-item">
+      <span><span class="dot"></span>${nap.label}</span>
+      <span class="times">${formatDisplay(toHHMM(nap.start))} – ${formatDisplay(toHHMM(nap.end))}</span>
+    </div>`;
+  });
+  html += `<div class="schedule-item bedtime">
+    <span><span class="dot"></span>Bedtime estimate</span>
+    <span class="times">${formatDisplay(toHHMM(sched.bedtime))}</span>
+  </div>`;
+  el.innerHTML = html;
+}
+
+function renderTimeline() {
+  const el = document.getElementById("timeline");
+  el.innerHTML = "";
+  const dayStart = 6 * 60;   // 6am
+  const dayEnd = 24 * 60;    // midnight
+  const span = dayEnd - dayStart;
+
+  const posPct = (mins) => {
+    const clamped = Math.max(dayStart, Math.min(dayEnd, mins));
+    return ((clamped - dayStart) / span) * 100;
+  };
+
+  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  if (sched) {
+    sched.naps.forEach(nap => {
+      const left = posPct(nap.start);
+      const width = posPct(nap.end) - left;
+      const block = document.createElement("div");
+      block.className = "timeline-block" + (nap.isNap4 ? " nap4" : "");
+      block.style.left = left + "%";
+      block.style.width = Math.max(width, 0.8) + "%";
+      block.title = `${nap.label}: ${formatDisplay(toHHMM(nap.start))}–${formatDisplay(toHHMM(nap.end))}`;
+      el.appendChild(block);
+    });
+  }
+
+  state.poops.forEach(p => {
+    const left = posPct(toMinutes(p.time));
+    const mark = document.createElement("div");
+    mark.className = "timeline-block event poop";
+    mark.style.left = left + "%";
+    mark.title = `Poop: ${formatDisplay(p.time)}`;
+    el.appendChild(mark);
+  });
+
+  state.drinks.forEach(d => {
+    const left = posPct(toMinutes(d.time));
+    const mark = document.createElement("div");
+    mark.className = "timeline-block event drink";
+    mark.style.left = left + "%";
+    mark.title = `Drink: ${formatDisplay(d.time)}`;
+    el.appendChild(mark);
+  });
+
+  if (state.date === todayISO()) {
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    if (nowMin >= dayStart) {
+      const line = document.createElement("div");
+      line.className = "timeline-now";
+      line.style.left = posPct(nowMin) + "%";
+      el.appendChild(line);
+    }
+  }
+}
+
+function renderPoops() {
+  const el = document.getElementById("poop-list");
+  if (state.poops.length === 0) {
+    el.innerHTML = `<li class="empty-hint" style="background:none">No poops logged yet</li>`;
+    return;
+  }
+  const sorted = [...state.poops].sort((a, b) => a.time.localeCompare(b.time));
+  el.innerHTML = sorted.map(p => `
+    <li>
+      <span>💩 ${formatDisplay(p.time)}</span>
+      <button class="delete-btn" data-id="${p.id}" data-kind="poop">✕</button>
+    </li>
+  `).join("");
+}
+
+function renderDrinks() {
+  const el = document.getElementById("drink-list");
+  if (state.drinks.length === 0) {
+    el.innerHTML = `<li class="empty-hint" style="background:none">No drinks logged yet</li>`;
+    return;
+  }
+  const sorted = [...state.drinks].sort((a, b) => a.time.localeCompare(b.time));
+  el.innerHTML = sorted.map(d => {
+    let detail;
+    if (d.type === "volume") {
+      detail = `${d.volume_ml ?? "?"} ml`;
+    } else {
+      const bits = [];
+      if (d.breastfeed_minutes != null) bits.push(`${d.breastfeed_minutes} min`);
+      if (d.breastfeed_amount) bits.push(d.breastfeed_amount);
+      detail = bits.length ? bits.join(" · ") : "breastfeed";
+    }
+    return `
+      <li>
+        <span>🍼 ${formatDisplay(d.time)} <span class="log-detail">— ${detail}</span></span>
+        <button class="delete-btn" data-id="${d.id}" data-kind="drink">✕</button>
+      </li>
+    `;
+  }).join("");
+}
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+  if (msg) setTimeout(() => {
+    if (document.getElementById("status").textContent === msg) {
+      document.getElementById("status").textContent = "";
+    }
+  }, 2500);
+}
+
+// ---- data loading --------------------------------------------------------
+async function loadDay(date) {
+  if (!configured) return;
+  loading = true;
+  setStatus("Loading…");
+  try {
+    const [sleepRes, poopRes, drinkRes] = await Promise.all([
+      supabaseClient.from("sleep_log").select("*").eq("date", date).maybeSingle(),
+      supabaseClient.from("poop_log").select("*").eq("date", date),
+      supabaseClient.from("drink_log").select("*").eq("date", date),
+    ]);
+
+    if (sleepRes.data) {
+      state.wakeTime = sleepRes.data.wake_time ? sleepRes.data.wake_time.slice(0, 5) : "";
+      state.nap4Enabled = !!sleepRes.data.nap4_enabled;
+    } else {
+      state.wakeTime = "";
+      state.nap4Enabled = false;
+    }
+    state.poops = (poopRes.data || []).map(p => ({ id: p.id, time: p.time.slice(0, 5) }));
+    state.drinks = (drinkRes.data || []).map(d => ({
+      id: d.id,
+      time: d.time.slice(0, 5),
+      type: d.type,
+      volume_ml: d.volume_ml,
+      breastfeed_minutes: d.breastfeed_minutes,
+      breastfeed_amount: d.breastfeed_amount,
+    }));
+    setStatus("");
+  } catch (err) {
+    console.error(err);
+    setStatus("Failed to load — check console");
+  }
+  loading = false;
+  render();
+}
+
+async function saveSleepLog() {
+  if (!configured) return;
+  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  const toTime = (mins) => mins == null ? null : toHHMM(mins) + ":00";
+
+  const row = {
+    date: state.date,
+    wake_time: state.wakeTime ? state.wakeTime + ":00" : null,
+    nap4_enabled: state.nap4Enabled,
+    nap1_start: sched ? toTime(sched.naps[0]?.start) : null,
+    nap1_end: sched ? toTime(sched.naps[0]?.end) : null,
+    nap2_start: sched ? toTime(sched.naps[1]?.start) : null,
+    nap2_end: sched ? toTime(sched.naps[1]?.end) : null,
+    nap3_start: sched ? toTime(sched.naps[2]?.start) : null,
+    nap3_end: sched ? toTime(sched.naps[2]?.end) : null,
+    nap4_start: sched && state.nap4Enabled ? toTime(sched.naps[3]?.start) : null,
+    nap4_end: sched && state.nap4Enabled ? toTime(sched.naps[3]?.end) : null,
+    bedtime_estimate: sched ? toTime(sched.bedtime) : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabaseClient.from("sleep_log").upsert(row, { onConflict: "date" });
+  if (error) {
+    console.error(error);
+    setStatus("Save failed — check console");
+  } else {
+    setStatus("Saved");
+  }
+}
+
+async function addPoop() {
+  const time = document.getElementById("poop-time").value || nowHHMM();
+  if (!configured) { setStatus("Configure Supabase first"); return; }
+  const { data, error } = await supabaseClient
+    .from("poop_log")
+    .insert({ date: state.date, time: time + ":00" })
+    .select()
+    .single();
+  if (error) {
+    console.error(error);
+    setStatus("Failed to log poop");
+    return;
+  }
+  state.poops.push({ id: data.id, time: data.time.slice(0, 5) });
+  document.getElementById("poop-time").value = "";
+  render();
+  setStatus("Poop logged");
+}
+
+async function deletePoop(id) {
+  const { error } = await supabaseClient.from("poop_log").delete().eq("id", id);
+  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  state.poops = state.poops.filter(p => p.id !== id);
+  render();
+}
+
+async function addDrink() {
+  if (!configured) { setStatus("Configure Supabase first"); return; }
+  const time = document.getElementById("drink-time").value || nowHHMM();
+  const type = document.getElementById("drink-type").value;
+
+  const row = { date: state.date, time: time + ":00", type };
+  if (type === "volume") {
+    const val = document.getElementById("drink-volume").value;
+    row.volume_ml = val ? Number(val) : null;
+  } else {
+    const mins = document.getElementById("drink-minutes").value;
+    const amt = document.getElementById("drink-amount").value;
+    row.breastfeed_minutes = mins ? Number(mins) : null;
+    row.breastfeed_amount = amt || null;
+  }
+
+  const { data, error } = await supabaseClient.from("drink_log").insert(row).select().single();
+  if (error) {
+    console.error(error);
+    setStatus("Failed to log drink");
+    return;
+  }
+  state.drinks.push({
+    id: data.id,
+    time: data.time.slice(0, 5),
+    type: data.type,
+    volume_ml: data.volume_ml,
+    breastfeed_minutes: data.breastfeed_minutes,
+    breastfeed_amount: data.breastfeed_amount,
+  });
+  document.getElementById("drink-time").value = "";
+  document.getElementById("drink-volume").value = "";
+  document.getElementById("drink-minutes").value = "";
+  document.getElementById("drink-amount").value = "";
+  render();
+  setStatus("Drink logged");
+}
+
+async function deleteDrink(id) {
+  const { error } = await supabaseClient.from("drink_log").delete().eq("id", id);
+  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  state.drinks = state.drinks.filter(d => d.id !== id);
+  render();
+}
+
+// ---- event wiring --------------------------------------------------------
+document.getElementById("date-input").addEventListener("change", (e) => {
+  state.date = e.target.value;
+  loadDay(state.date);
+});
+
+document.getElementById("wake-input").addEventListener("change", (e) => {
+  state.wakeTime = e.target.value;
+  render();
+  saveSleepLog();
+});
+
+document.getElementById("nap4-toggle").addEventListener("change", (e) => {
+  state.nap4Enabled = e.target.checked;
+  render();
+  saveSleepLog();
+});
+
+document.getElementById("drink-type").addEventListener("change", (e) => {
+  const isVolume = e.target.value === "volume";
+  document.getElementById("volume-fields").style.display = isVolume ? "flex" : "none";
+  document.getElementById("breastfeed-fields").style.display = isVolume ? "none" : "flex";
+});
+
+document.getElementById("add-poop-btn").addEventListener("click", addPoop);
+document.getElementById("add-drink-btn").addEventListener("click", addDrink);
+
+document.getElementById("poop-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".delete-btn");
+  if (btn) deletePoop(btn.dataset.id);
+});
+document.getElementById("drink-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".delete-btn");
+  if (btn) deleteDrink(btn.dataset.id);
+});
+
+// ---- init -----------------------------------------------------------
+document.getElementById("date-input").value = state.date;
+loadDay(state.date);
+setInterval(renderTimeline, 60000);
+</script>
+</body>
+</html>
