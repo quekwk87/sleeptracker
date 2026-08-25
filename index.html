@@ -16,6 +16,7 @@
     --nap-4: #c9b8e8;
     --poop: #c9a876;
     --drink: #7fc9c0;
+    --night: #8577c9;
     --accent: #e8909f;
     --accent-dark: #d1728a;
     --danger: #d1728a;
@@ -189,6 +190,7 @@
   }
   .timeline-block.poop { background: var(--poop); }
   .timeline-block.drink { background: var(--drink); }
+  .timeline-block.night { background: var(--night); }
   .timeline-now {
     position: absolute;
     top: 0; bottom: 0;
@@ -223,11 +225,16 @@
   ul.log-list li {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     padding: 10px 12px;
     background: var(--bg);
     border-radius: 10px;
     font-size: 0.92rem;
+  }
+  .log-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
   .log-detail { color: var(--muted); font-size: 0.85rem; }
   .delete-btn {
@@ -267,7 +274,7 @@
 
 <header>
   <h1>🌙 Avril Tracker</h1>
-  <div class="subtitle">naps · poops · feeds</div>
+  <div class="subtitle">naps · poops · feeds · night wakings</div>
 </header>
 
 <div id="config-warning" class="config-warning" style="display:none">
@@ -307,13 +314,14 @@
     <h2>📊 Timeline</h2>
     <div class="timeline-wrap" id="timeline"></div>
     <div class="timeline-labels">
-      <span>6am</span><span>12pm</span><span>6pm</span><span>12am</span>
+      <span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
     </div>
     <div class="legend">
       <span><i class="sw" style="background:var(--nap)"></i>naps</span>
       <span><i class="sw" style="background:var(--nap-4)"></i>nap 4</span>
       <span><i class="sw" style="background:var(--poop)"></i>poop</span>
       <span><i class="sw" style="background:var(--drink)"></i>drink</span>
+      <span><i class="sw" style="background:var(--night)"></i>night waking</span>
     </div>
   </div>
 
@@ -324,8 +332,12 @@
         <label for="poop-time">Time</label>
         <input type="time" id="poop-time">
       </div>
-      <button class="btn-primary" id="add-poop-btn" style="align-self:flex-end">Log poop</button>
+      <div>
+        <label for="poop-remarks">Remarks</label>
+        <input type="text" id="poop-remarks" placeholder="optional">
+      </div>
     </div>
+    <button class="btn-primary" id="add-poop-btn" style="margin-top:10px; width:100%">Log poop</button>
     <ul class="log-list" id="poop-list" style="margin-top:12px"></ul>
   </div>
 
@@ -360,8 +372,66 @@
         <input type="text" id="drink-amount" placeholder="e.g. both sides">
       </div>
     </div>
+    <div class="add-form">
+      <div>
+        <label for="drink-remarks">Remarks</label>
+        <input type="text" id="drink-remarks" placeholder="optional">
+      </div>
+    </div>
     <button class="btn-primary" id="add-drink-btn" style="margin-top:10px; width:100%">Log drink</button>
     <ul class="log-list" id="drink-list" style="margin-top:12px"></ul>
+  </div>
+
+  <div class="card">
+    <h2>🌃 Night waking</h2>
+    <div class="add-form">
+      <div>
+        <label for="waking-time">Time</label>
+        <input type="time" id="waking-time">
+      </div>
+    </div>
+    <div class="toggle-row">
+      <span>Drank milk?</span>
+      <label class="switch">
+        <input type="checkbox" id="waking-milk-toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="waking-milk-section" style="display:none">
+      <div class="add-form">
+        <div>
+          <label for="waking-type">Type</label>
+          <select id="waking-type">
+            <option value="volume">Volume (ml)</option>
+            <option value="breastfeed">Breastfeed</option>
+          </select>
+        </div>
+      </div>
+      <div class="add-form" id="waking-volume-fields">
+        <div>
+          <label for="waking-volume">Amount (ml)</label>
+          <input type="number" id="waking-volume" min="0" step="5" placeholder="e.g. 90">
+        </div>
+      </div>
+      <div class="add-form" id="waking-breastfeed-fields" style="display:none">
+        <div>
+          <label for="waking-minutes">Minutes</label>
+          <input type="number" id="waking-minutes" min="0" step="1" placeholder="e.g. 10">
+        </div>
+        <div>
+          <label for="waking-amount">Amount (optional)</label>
+          <input type="text" id="waking-amount" placeholder="e.g. both sides">
+        </div>
+      </div>
+    </div>
+    <div class="add-form">
+      <div>
+        <label for="waking-remarks">Remarks</label>
+        <input type="text" id="waking-remarks" placeholder="optional">
+      </div>
+    </div>
+    <button class="btn-primary" id="add-waking-btn" style="margin-top:10px; width:100%">Log waking</button>
+    <ul class="log-list" id="waking-list" style="margin-top:12px"></ul>
   </div>
 
   <div class="status" id="status"></div>
@@ -396,6 +466,7 @@ let state = {
   nap4Enabled: false,
   poops: [],
   drinks: [],
+  nightWakings: [],
 };
 let loading = false;
 
@@ -424,12 +495,13 @@ function toHHMM(mins) {
   return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
 }
 function formatDisplay(hhmm) {
-  if (!hhmm) return "--";
-  const [h, m] = hhmm.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  let h12 = h % 12;
-  if (h12 === 0) h12 = 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+  return hhmm || "--";
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // ---- schedule computation --------------------------------------------
@@ -465,6 +537,7 @@ function render() {
   renderTimeline();
   renderPoops();
   renderDrinks();
+  renderNightWakings();
 }
 
 function renderSchedule() {
@@ -532,6 +605,15 @@ function renderTimeline() {
     el.appendChild(mark);
   });
 
+  state.nightWakings.forEach(w => {
+    const left = posPct(toMinutes(w.time));
+    const mark = document.createElement("div");
+    mark.className = "timeline-block event night";
+    mark.style.left = left + "%";
+    mark.title = `Night waking: ${formatDisplay(w.time)}`;
+    el.appendChild(mark);
+  });
+
   if (state.date === todayISO()) {
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -553,7 +635,10 @@ function renderPoops() {
   const sorted = [...state.poops].sort((a, b) => a.time.localeCompare(b.time));
   el.innerHTML = sorted.map(p => `
     <li>
-      <span>💩 ${formatDisplay(p.time)}</span>
+      <div class="log-main">
+        <span>💩 ${formatDisplay(p.time)}</span>
+        ${p.remarks ? `<span class="log-detail">${escapeHtml(p.remarks)}</span>` : ""}
+      </div>
       <button class="delete-btn" data-id="${p.id}" data-kind="poop">✕</button>
     </li>
   `).join("");
@@ -573,13 +658,47 @@ function renderDrinks() {
     } else {
       const bits = [];
       if (d.breastfeed_minutes != null) bits.push(`${d.breastfeed_minutes} min`);
-      if (d.breastfeed_amount) bits.push(d.breastfeed_amount);
+      if (d.breastfeed_amount) bits.push(escapeHtml(d.breastfeed_amount));
       detail = bits.length ? bits.join(" · ") : "breastfeed";
     }
     return `
       <li>
-        <span>🍼 ${formatDisplay(d.time)} <span class="log-detail">— ${detail}</span></span>
+        <div class="log-main">
+          <span>🍼 ${formatDisplay(d.time)} <span class="log-detail">— ${detail}</span></span>
+          ${d.remarks ? `<span class="log-detail">${escapeHtml(d.remarks)}</span>` : ""}
+        </div>
         <button class="delete-btn" data-id="${d.id}" data-kind="drink">✕</button>
+      </li>
+    `;
+  }).join("");
+}
+
+function renderNightWakings() {
+  const el = document.getElementById("waking-list");
+  if (state.nightWakings.length === 0) {
+    el.innerHTML = `<li class="empty-hint" style="background:none">No night wakings logged yet</li>`;
+    return;
+  }
+  const sorted = [...state.nightWakings].sort((a, b) => a.time.localeCompare(b.time));
+  el.innerHTML = sorted.map(w => {
+    let detail = null;
+    if (w.drank_milk) {
+      if (w.type === "volume") {
+        detail = `${w.volume_ml ?? "?"} ml`;
+      } else {
+        const bits = [];
+        if (w.breastfeed_minutes != null) bits.push(`${w.breastfeed_minutes} min`);
+        if (w.breastfeed_amount) bits.push(escapeHtml(w.breastfeed_amount));
+        detail = bits.length ? bits.join(" · ") : "breastfeed";
+      }
+    }
+    return `
+      <li>
+        <div class="log-main">
+          <span>🌃 ${formatDisplay(w.time)}${detail ? ` <span class="log-detail">— ${detail}</span>` : ""}</span>
+          ${w.remarks ? `<span class="log-detail">${escapeHtml(w.remarks)}</span>` : ""}
+        </div>
+        <button class="delete-btn" data-id="${w.id}" data-kind="waking">✕</button>
       </li>
     `;
   }).join("");
@@ -600,10 +719,11 @@ async function loadDay(date) {
   loading = true;
   setStatus("Loading…");
   try {
-    const [sleepRes, poopRes, drinkRes] = await Promise.all([
+    const [sleepRes, poopRes, drinkRes, wakingRes] = await Promise.all([
       supabaseClient.from("sleep_log").select("*").eq("date", date).maybeSingle(),
       supabaseClient.from("poop_log").select("*").eq("date", date),
       supabaseClient.from("drink_log").select("*").eq("date", date),
+      supabaseClient.from("night_waking_log").select("*").eq("date", date),
     ]);
 
     if (sleepRes.data) {
@@ -613,7 +733,11 @@ async function loadDay(date) {
       state.wakeTime = "";
       state.nap4Enabled = false;
     }
-    state.poops = (poopRes.data || []).map(p => ({ id: p.id, time: p.time.slice(0, 5) }));
+    state.poops = (poopRes.data || []).map(p => ({
+      id: p.id,
+      time: p.time.slice(0, 5),
+      remarks: p.remarks,
+    }));
     state.drinks = (drinkRes.data || []).map(d => ({
       id: d.id,
       time: d.time.slice(0, 5),
@@ -621,6 +745,17 @@ async function loadDay(date) {
       volume_ml: d.volume_ml,
       breastfeed_minutes: d.breastfeed_minutes,
       breastfeed_amount: d.breastfeed_amount,
+      remarks: d.remarks,
+    }));
+    state.nightWakings = (wakingRes.data || []).map(w => ({
+      id: w.id,
+      time: w.time.slice(0, 5),
+      drank_milk: w.drank_milk,
+      type: w.type,
+      volume_ml: w.volume_ml,
+      breastfeed_minutes: w.breastfeed_minutes,
+      breastfeed_amount: w.breastfeed_amount,
+      remarks: w.remarks,
     }));
     setStatus("");
   } catch (err) {
@@ -663,10 +798,11 @@ async function saveSleepLog() {
 
 async function addPoop() {
   const time = document.getElementById("poop-time").value || nowHHMM();
+  const remarks = document.getElementById("poop-remarks").value || null;
   if (!configured) { setStatus("Configure Supabase first"); return; }
   const { data, error } = await supabaseClient
     .from("poop_log")
-    .insert({ date: state.date, time: time + ":00" })
+    .insert({ date: state.date, time: time + ":00", remarks })
     .select()
     .single();
   if (error) {
@@ -674,8 +810,9 @@ async function addPoop() {
     setStatus("Failed to log poop");
     return;
   }
-  state.poops.push({ id: data.id, time: data.time.slice(0, 5) });
+  state.poops.push({ id: data.id, time: data.time.slice(0, 5), remarks: data.remarks });
   document.getElementById("poop-time").value = "";
+  document.getElementById("poop-remarks").value = "";
   render();
   setStatus("Poop logged");
 }
@@ -692,7 +829,7 @@ async function addDrink() {
   const time = document.getElementById("drink-time").value || nowHHMM();
   const type = document.getElementById("drink-type").value;
 
-  const row = { date: state.date, time: time + ":00", type };
+  const row = { date: state.date, time: time + ":00", type, remarks: document.getElementById("drink-remarks").value || null };
   if (type === "volume") {
     const val = document.getElementById("drink-volume").value;
     row.volume_ml = val ? Number(val) : null;
@@ -716,11 +853,13 @@ async function addDrink() {
     volume_ml: data.volume_ml,
     breastfeed_minutes: data.breastfeed_minutes,
     breastfeed_amount: data.breastfeed_amount,
+    remarks: data.remarks,
   });
   document.getElementById("drink-time").value = "";
   document.getElementById("drink-volume").value = "";
   document.getElementById("drink-minutes").value = "";
   document.getElementById("drink-amount").value = "";
+  document.getElementById("drink-remarks").value = "";
   render();
   setStatus("Drink logged");
 }
@@ -729,6 +868,63 @@ async function deleteDrink(id) {
   const { error } = await supabaseClient.from("drink_log").delete().eq("id", id);
   if (error) { console.error(error); setStatus("Delete failed"); return; }
   state.drinks = state.drinks.filter(d => d.id !== id);
+  render();
+}
+
+async function addNightWaking() {
+  if (!configured) { setStatus("Configure Supabase first"); return; }
+  const time = document.getElementById("waking-time").value || nowHHMM();
+  const drankMilk = document.getElementById("waking-milk-toggle").checked;
+
+  const row = {
+    date: state.date,
+    time: time + ":00",
+    drank_milk: drankMilk,
+    remarks: document.getElementById("waking-remarks").value || null,
+  };
+  if (drankMilk) {
+    const type = document.getElementById("waking-type").value;
+    row.type = type;
+    if (type === "volume") {
+      const val = document.getElementById("waking-volume").value;
+      row.volume_ml = val ? Number(val) : null;
+    } else {
+      const mins = document.getElementById("waking-minutes").value;
+      const amt = document.getElementById("waking-amount").value;
+      row.breastfeed_minutes = mins ? Number(mins) : null;
+      row.breastfeed_amount = amt || null;
+    }
+  }
+
+  const { data, error } = await supabaseClient.from("night_waking_log").insert(row).select().single();
+  if (error) {
+    console.error(error);
+    setStatus("Failed to log waking");
+    return;
+  }
+  state.nightWakings.push({
+    id: data.id,
+    time: data.time.slice(0, 5),
+    drank_milk: data.drank_milk,
+    type: data.type,
+    volume_ml: data.volume_ml,
+    breastfeed_minutes: data.breastfeed_minutes,
+    breastfeed_amount: data.breastfeed_amount,
+    remarks: data.remarks,
+  });
+  document.getElementById("waking-time").value = "";
+  document.getElementById("waking-volume").value = "";
+  document.getElementById("waking-minutes").value = "";
+  document.getElementById("waking-amount").value = "";
+  document.getElementById("waking-remarks").value = "";
+  render();
+  setStatus("Night waking logged");
+}
+
+async function deleteNightWaking(id) {
+  const { error } = await supabaseClient.from("night_waking_log").delete().eq("id", id);
+  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  state.nightWakings = state.nightWakings.filter(w => w.id !== id);
   render();
 }
 
@@ -756,8 +952,19 @@ document.getElementById("drink-type").addEventListener("change", (e) => {
   document.getElementById("breastfeed-fields").style.display = isVolume ? "none" : "flex";
 });
 
+document.getElementById("waking-milk-toggle").addEventListener("change", (e) => {
+  document.getElementById("waking-milk-section").style.display = e.target.checked ? "block" : "none";
+});
+
+document.getElementById("waking-type").addEventListener("change", (e) => {
+  const isVolume = e.target.value === "volume";
+  document.getElementById("waking-volume-fields").style.display = isVolume ? "flex" : "none";
+  document.getElementById("waking-breastfeed-fields").style.display = isVolume ? "none" : "flex";
+});
+
 document.getElementById("add-poop-btn").addEventListener("click", addPoop);
 document.getElementById("add-drink-btn").addEventListener("click", addDrink);
+document.getElementById("add-waking-btn").addEventListener("click", addNightWaking);
 
 document.getElementById("poop-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".delete-btn");
@@ -766,6 +973,10 @@ document.getElementById("poop-list").addEventListener("click", (e) => {
 document.getElementById("drink-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".delete-btn");
   if (btn) deleteDrink(btn.dataset.id);
+});
+document.getElementById("waking-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".delete-btn");
+  if (btn) deleteNightWaking(btn.dataset.id);
 });
 
 // ---- init -----------------------------------------------------------
