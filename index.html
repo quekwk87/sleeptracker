@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Avril Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -22,16 +22,19 @@
     --danger: #d1728a;
     --radius: 14px;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--ink);
-    padding-bottom: 60px;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   header {
-    padding: 20px 16px 8px;
+    padding: calc(20px + env(safe-area-inset-top)) 16px 8px;
     text-align: center;
   }
   header h1 {
@@ -71,14 +74,16 @@
   input[type="time"],
   input[type="date"],
   input[type="number"],
+  input[type="text"],
   select {
     width: 100%;
-    padding: 10px;
+    padding: 12px 10px;
     border-radius: 10px;
     border: 1px solid var(--border);
-    font-size: 1rem;
+    font-size: 16px; /* 16px prevents iOS auto-zoom on focus */
     background: var(--bg);
     color: var(--ink);
+    touch-action: manipulation;
   }
   .row {
     display: flex;
@@ -95,8 +100,8 @@
   }
   .switch {
     position: relative;
-    width: 44px;
-    height: 24px;
+    width: 48px;
+    height: 28px;
     flex-shrink: 0;
   }
   .switch input { opacity: 0; width: 0; height: 0; }
@@ -111,8 +116,8 @@
   .slider::before {
     content: "";
     position: absolute;
-    height: 18px; width: 18px;
-    left: 3px; top: 3px;
+    height: 20px; width: 20px;
+    left: 4px; top: 4px;
     background: white;
     border-radius: 50%;
     transition: .2s;
@@ -124,8 +129,10 @@
     border: none;
     border-radius: 10px;
     font-size: 0.95rem;
-    padding: 11px 14px;
+    padding: 13px 14px;
     font-weight: 600;
+    min-height: 44px;
+    touch-action: manipulation;
   }
   .btn-primary {
     background: var(--accent);
@@ -151,7 +158,8 @@
     border-radius: 10px;
     font-size: 0.92rem;
   }
-  .schedule-item .dot {
+  .schedule-item .dot,
+  .nap-row-head .dot {
     display: inline-block;
     width: 10px; height: 10px;
     border-radius: 50%;
@@ -160,6 +168,26 @@
   }
   .schedule-item.bedtime .dot { background: var(--accent); }
   .schedule-item .times { color: var(--muted); }
+  .nap-row {
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 10px;
+  }
+  .nap-row-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 0.92rem;
+    margin-bottom: 8px;
+  }
+  .nap-row-head .nap-label { font-weight: 600; }
+  .nap-row-head .times {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-left: auto;
+  }
+  .nap-row .add-form { margin-top: 0; }
   .empty-hint {
     color: var(--muted);
     font-size: 0.88rem;
@@ -191,6 +219,7 @@
   .timeline-block.poop { background: var(--poop); }
   .timeline-block.drink { background: var(--drink); }
   .timeline-block.night { background: var(--night); }
+  .timeline-block.estimate { opacity: 0.4; }
   .timeline-now {
     position: absolute;
     top: 0; bottom: 0;
@@ -214,6 +243,11 @@
   }
   .legend span { display: flex; align-items: center; gap: 5px; }
   .legend .sw { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .legend-hint {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 6px;
+  }
   ul.log-list {
     list-style: none;
     margin: 0;
@@ -241,9 +275,15 @@
     background: none;
     border: none;
     color: var(--danger);
-    font-size: 1.1rem;
-    padding: 2px 6px;
+    font-size: 1.2rem;
     line-height: 1;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    touch-action: manipulation;
   }
   .add-form {
     display: flex;
@@ -254,11 +294,13 @@
   .add-form > * { flex: 1; min-width: 90px; }
   .status {
     text-align: center;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     color: var(--muted);
     margin-top: 10px;
-    min-height: 1em;
+    min-height: 1.2em;
+    padding: 0 12px;
   }
+  .status.error { color: var(--danger); font-weight: 600; }
   .config-warning {
     background: #fdecea;
     border: 1px solid #f3c4bd;
@@ -304,7 +346,7 @@
   </div>
 
   <div class="card">
-    <h2>😴 Estimated nap schedule</h2>
+    <h2>😴 Naps</h2>
     <div id="schedule-list" class="schedule-list">
       <div class="empty-hint">Enter a wake time to see estimated naps</div>
     </div>
@@ -323,6 +365,7 @@
       <span><i class="sw" style="background:var(--drink)"></i>drink</span>
       <span><i class="sw" style="background:var(--night)"></i>night waking</span>
     </div>
+    <div class="legend-hint">Lighter/faded nap blocks are estimates — log the actual start/end below to fill them in.</div>
   </div>
 
   <div class="card">
@@ -464,6 +507,7 @@ let state = {
   date: todayISO(),
   wakeTime: "",
   nap4Enabled: false,
+  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
   poops: [],
   drinks: [],
   nightWakings: [],
@@ -527,6 +571,35 @@ function computeSchedule(wakeTime, nap4Enabled) {
   return { naps, bedtime };
 }
 
+// Merges the estimated schedule with any actual nap times logged so far.
+// Bedtime is estimated from the last nap's actual end when logged, else
+// falls back to its estimated end.
+function getDisplayNaps() {
+  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  if (!sched) return null;
+
+  const naps = sched.naps.map((nap, i) => {
+    const idx = i + 1;
+    const actual = state.actualNaps[idx] || { start: "", end: "" };
+    const hasActual = !!(actual.start && actual.end);
+    return {
+      ...nap,
+      idx,
+      estStart: nap.start,
+      estEnd: nap.end,
+      start: hasActual ? toMinutes(actual.start) : nap.start,
+      end: hasActual ? toMinutes(actual.end) : nap.end,
+      actualStart: actual.start || "",
+      actualEnd: actual.end || "",
+      hasActual,
+    };
+  });
+
+  const lastNap = naps[naps.length - 1];
+  const bedtime = lastNap.end + BEDTIME_GAP_MIN;
+  return { naps, bedtime };
+}
+
 // ---- rendering ---------------------------------------------------------
 function render() {
   document.getElementById("date-input").value = state.date;
@@ -542,17 +615,31 @@ function render() {
 
 function renderSchedule() {
   const el = document.getElementById("schedule-list");
-  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  const sched = getDisplayNaps();
   if (!sched) {
     el.innerHTML = `<div class="empty-hint">Enter a wake time to see estimated naps</div>`;
     return;
   }
   let html = "";
   sched.naps.forEach(nap => {
-    html += `<div class="schedule-item">
-      <span><span class="dot"></span>${nap.label}</span>
-      <span class="times">${formatDisplay(toHHMM(nap.start))} – ${formatDisplay(toHHMM(nap.end))}</span>
-    </div>`;
+    html += `
+      <div class="nap-row">
+        <div class="nap-row-head">
+          <span class="dot"></span>
+          <span class="nap-label">${nap.label}</span>
+          <span class="times">est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}</span>
+        </div>
+        <div class="add-form">
+          <div>
+            <label>Actual start</label>
+            <input type="time" data-nap="${nap.idx}" data-field="start" value="${nap.actualStart}">
+          </div>
+          <div>
+            <label>Actual end</label>
+            <input type="time" data-nap="${nap.idx}" data-field="end" value="${nap.actualEnd}">
+          </div>
+        </div>
+      </div>`;
   });
   html += `<div class="schedule-item bedtime">
     <span><span class="dot"></span>Bedtime estimate</span>
@@ -573,16 +660,16 @@ function renderTimeline() {
     return ((clamped - dayStart) / span) * 100;
   };
 
-  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  const sched = getDisplayNaps();
   if (sched) {
     sched.naps.forEach(nap => {
       const left = posPct(nap.start);
       const width = posPct(nap.end) - left;
       const block = document.createElement("div");
-      block.className = "timeline-block" + (nap.isNap4 ? " nap4" : "");
+      block.className = "timeline-block" + (nap.isNap4 ? " nap4" : "") + (nap.hasActual ? "" : " estimate");
       block.style.left = left + "%";
       block.style.width = Math.max(width, 0.8) + "%";
-      block.title = `${nap.label}: ${formatDisplay(toHHMM(nap.start))}–${formatDisplay(toHHMM(nap.end))}`;
+      block.title = `${nap.label}${nap.hasActual ? "" : " (est.)"}: ${formatDisplay(toHHMM(nap.start))}–${formatDisplay(toHHMM(nap.end))}`;
       el.appendChild(block);
     });
   }
@@ -704,13 +791,16 @@ function renderNightWakings() {
   }).join("");
 }
 
-function setStatus(msg) {
-  document.getElementById("status").textContent = msg;
+function setStatus(msg, isError = false) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.classList.toggle("error", isError);
   if (msg) setTimeout(() => {
-    if (document.getElementById("status").textContent === msg) {
-      document.getElementById("status").textContent = "";
+    if (el.textContent === msg) {
+      el.textContent = "";
+      el.classList.remove("error");
     }
-  }, 2500);
+  }, isError ? 5000 : 2500);
 }
 
 // ---- data loading --------------------------------------------------------
@@ -727,11 +817,19 @@ async function loadDay(date) {
     ]);
 
     if (sleepRes.data) {
-      state.wakeTime = sleepRes.data.wake_time ? sleepRes.data.wake_time.slice(0, 5) : "";
-      state.nap4Enabled = !!sleepRes.data.nap4_enabled;
+      const s = sleepRes.data;
+      state.wakeTime = s.wake_time ? s.wake_time.slice(0, 5) : "";
+      state.nap4Enabled = !!s.nap4_enabled;
+      state.actualNaps = {
+        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "" },
+        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "" },
+        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "" },
+        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "" },
+      };
     } else {
       state.wakeTime = "";
       state.nap4Enabled = false;
+      state.actualNaps = { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } };
     }
     state.poops = (poopRes.data || []).map(p => ({
       id: p.id,
@@ -760,7 +858,7 @@ async function loadDay(date) {
     setStatus("");
   } catch (err) {
     console.error(err);
-    setStatus("Failed to load — check console");
+    setStatus("Failed to load: " + (err.message || err), true);
   }
   loading = false;
   render();
@@ -783,14 +881,22 @@ async function saveSleepLog() {
     nap3_end: sched ? toTime(sched.naps[2]?.end) : null,
     nap4_start: sched && state.nap4Enabled ? toTime(sched.naps[3]?.start) : null,
     nap4_end: sched && state.nap4Enabled ? toTime(sched.naps[3]?.end) : null,
-    bedtime_estimate: sched ? toTime(sched.bedtime) : null,
+    nap1_actual_start: state.actualNaps[1]?.start ? state.actualNaps[1].start + ":00" : null,
+    nap1_actual_end: state.actualNaps[1]?.end ? state.actualNaps[1].end + ":00" : null,
+    nap2_actual_start: state.actualNaps[2]?.start ? state.actualNaps[2].start + ":00" : null,
+    nap2_actual_end: state.actualNaps[2]?.end ? state.actualNaps[2].end + ":00" : null,
+    nap3_actual_start: state.actualNaps[3]?.start ? state.actualNaps[3].start + ":00" : null,
+    nap3_actual_end: state.actualNaps[3]?.end ? state.actualNaps[3].end + ":00" : null,
+    nap4_actual_start: state.actualNaps[4]?.start ? state.actualNaps[4].start + ":00" : null,
+    nap4_actual_end: state.actualNaps[4]?.end ? state.actualNaps[4].end + ":00" : null,
+    bedtime_estimate: toTime(getDisplayNaps()?.bedtime),
     updated_at: new Date().toISOString(),
   };
 
   const { error } = await supabaseClient.from("sleep_log").upsert(row, { onConflict: "date" });
   if (error) {
     console.error(error);
-    setStatus("Save failed — check console");
+    setStatus("Save failed: " + error.message, true);
   } else {
     setStatus("Saved");
   }
@@ -799,7 +905,7 @@ async function saveSleepLog() {
 async function addPoop() {
   const time = document.getElementById("poop-time").value || nowHHMM();
   const remarks = document.getElementById("poop-remarks").value || null;
-  if (!configured) { setStatus("Configure Supabase first"); return; }
+  if (!configured) { setStatus("Configure Supabase first", true); return; }
   const { data, error } = await supabaseClient
     .from("poop_log")
     .insert({ date: state.date, time: time + ":00", remarks })
@@ -807,7 +913,7 @@ async function addPoop() {
     .single();
   if (error) {
     console.error(error);
-    setStatus("Failed to log poop");
+    setStatus("Failed to log poop: " + error.message, true);
     return;
   }
   state.poops.push({ id: data.id, time: data.time.slice(0, 5), remarks: data.remarks });
@@ -819,13 +925,13 @@ async function addPoop() {
 
 async function deletePoop(id) {
   const { error } = await supabaseClient.from("poop_log").delete().eq("id", id);
-  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  if (error) { console.error(error); setStatus("Delete failed: " + error.message, true); return; }
   state.poops = state.poops.filter(p => p.id !== id);
   render();
 }
 
 async function addDrink() {
-  if (!configured) { setStatus("Configure Supabase first"); return; }
+  if (!configured) { setStatus("Configure Supabase first", true); return; }
   const time = document.getElementById("drink-time").value || nowHHMM();
   const type = document.getElementById("drink-type").value;
 
@@ -843,7 +949,7 @@ async function addDrink() {
   const { data, error } = await supabaseClient.from("drink_log").insert(row).select().single();
   if (error) {
     console.error(error);
-    setStatus("Failed to log drink");
+    setStatus("Failed to log drink: " + error.message, true);
     return;
   }
   state.drinks.push({
@@ -866,13 +972,13 @@ async function addDrink() {
 
 async function deleteDrink(id) {
   const { error } = await supabaseClient.from("drink_log").delete().eq("id", id);
-  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  if (error) { console.error(error); setStatus("Delete failed: " + error.message, true); return; }
   state.drinks = state.drinks.filter(d => d.id !== id);
   render();
 }
 
 async function addNightWaking() {
-  if (!configured) { setStatus("Configure Supabase first"); return; }
+  if (!configured) { setStatus("Configure Supabase first", true); return; }
   const time = document.getElementById("waking-time").value || nowHHMM();
   const drankMilk = document.getElementById("waking-milk-toggle").checked;
 
@@ -899,7 +1005,7 @@ async function addNightWaking() {
   const { data, error } = await supabaseClient.from("night_waking_log").insert(row).select().single();
   if (error) {
     console.error(error);
-    setStatus("Failed to log waking");
+    setStatus("Failed to log waking: " + error.message, true);
     return;
   }
   state.nightWakings.push({
@@ -923,7 +1029,7 @@ async function addNightWaking() {
 
 async function deleteNightWaking(id) {
   const { error } = await supabaseClient.from("night_waking_log").delete().eq("id", id);
-  if (error) { console.error(error); setStatus("Delete failed"); return; }
+  if (error) { console.error(error); setStatus("Delete failed: " + error.message, true); return; }
   state.nightWakings = state.nightWakings.filter(w => w.id !== id);
   render();
 }
@@ -943,6 +1049,16 @@ document.getElementById("wake-input").addEventListener("change", (e) => {
 document.getElementById("nap4-toggle").addEventListener("change", (e) => {
   state.nap4Enabled = e.target.checked;
   render();
+  saveSleepLog();
+});
+
+document.getElementById("schedule-list").addEventListener("change", (e) => {
+  const napIdx = e.target.dataset.nap;
+  const field = e.target.dataset.field;
+  if (!napIdx || !field) return;
+  if (!state.actualNaps[napIdx]) state.actualNaps[napIdx] = { start: "", end: "" };
+  state.actualNaps[napIdx][field] = e.target.value;
+  renderTimeline();
   saveSleepLog();
 });
 
