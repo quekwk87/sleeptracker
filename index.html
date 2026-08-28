@@ -513,19 +513,6 @@ if (configured) {
   document.getElementById("config-warning").style.display = "block";
 }
 
-// ---- state -------------------------------------------------------------
-let state = {
-  date: todayISO(),
-  wakeTime: "",
-  nap4Enabled: false,
-  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
-  prevBedtime: "",
-  poops: [],
-  drinks: [],
-  nightWakings: [],
-};
-let loading = false;
-
 // The app is pinned to a fixed timezone (where Avril actually is) rather
 // than the device's own timezone, so "today" and "now" defaults stay
 // consistent no matter which country a parent is logging from.
@@ -559,6 +546,19 @@ function addDaysISO(dateStr, delta) {
   dt.setUTCDate(dt.getUTCDate() + delta);
   return dt.toISOString().slice(0, 10);
 }
+
+// ---- state -------------------------------------------------------------
+let state = {
+  date: todayISO(),
+  wakeTime: "",
+  nap4Enabled: false,
+  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
+  prevBedtime: "",
+  poops: [],
+  drinks: [],
+  nightWakings: [],
+};
+let loading = false;
 
 // ---- time helpers --------------------------------------------------------
 function toMinutes(hhmm) {
