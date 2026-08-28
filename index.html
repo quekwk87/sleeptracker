@@ -85,6 +85,14 @@
     color: var(--ink);
     touch-action: manipulation;
   }
+  /* Inside a two-field row, let time/date pickers size to their own
+     natural width instead of being forced to fill a shrunk flex item —
+     native pickers (esp. iOS) can ignore a narrow width and overflow
+     their box instead of wrapping. */
+  .add-form input[type="time"],
+  .add-form input[type="date"] {
+    width: auto;
+  }
   .row {
     display: flex;
     gap: 10px;
@@ -287,9 +295,18 @@
   }
   .add-form {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: flex-end;
     gap: 8px;
     margin-top: 12px;
+  }
+  .add-form > div {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .add-form > div:has(input[type="time"]),
+  .add-form > div:has(input[type="date"]) {
+    flex: 0 0 auto;
   }
   .status {
     text-align: center;
