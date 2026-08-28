@@ -369,6 +369,11 @@
   </div>
 
   <div class="card">
+    <h2>💤 Sleep totals</h2>
+    <div id="totals-list" class="schedule-list"></div>
+  </div>
+
+  <div class="card">
     <h2>💩 Poop log</h2>
     <div class="add-form">
       <div>
@@ -494,6 +499,12 @@ const NAP_DURATIONS_MIN = [90, 90, 30]; // nap 1, 2, 3
 const NAP4_DURATION_MIN = 30;
 const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
 
+// Reference sleep ranges shown against the day's totals. Edit these to
+// change the targets.
+const SLEEP_TARGET_NAP_MIN = 3.5 * 60;  // 3.5h
+const SLEEP_TARGET_NAP_MAX = 4 * 60;    // 4h
+const SLEEP_TARGET_NIGHT_MIN = 12 * 60; // 12h
+
 let supabaseClient = null;
 const configured = SUPABASE_URL !== "SUPABASE_URL" && SUPABASE_ANON_KEY !== "SUPABASE_ANON_KEY";
 if (configured) {
@@ -508,22 +519,45 @@ let state = {
   wakeTime: "",
   nap4Enabled: false,
   actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
+  prevBedtime: "",
   poops: [],
   drinks: [],
   nightWakings: [],
 };
 let loading = false;
 
+// The app is pinned to a fixed timezone (where Avril actually is) rather
+// than the device's own timezone, so "today" and "now" defaults stay
+// consistent no matter which country a parent is logging from.
+const APP_TIMEZONE = "Asia/Singapore";
+
+function nowPartsInAppTZ() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const map = {};
+  parts.forEach(p => { if (p.type !== "literal") map[p.type] = p.value; });
+  if (map.hour === "24") map.hour = "00"; // some engines report midnight as 24:00
+  return map;
+}
+
 function todayISO() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - tz * 60000);
-  return local.toISOString().slice(0, 10);
+  const t = nowPartsInAppTZ();
+  return `${t.year}-${t.month}-${t.day}`;
 }
 
 function nowHHMM() {
-  const d = new Date();
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  const t = nowPartsInAppTZ();
+  return `${t.hour}:${t.minute}`;
+}
+
+function addDaysISO(dateStr, delta) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
 }
 
 // ---- time helpers --------------------------------------------------------
@@ -540,6 +574,13 @@ function toHHMM(mins) {
 }
 function formatDisplay(hhmm) {
   return hhmm || "--";
+}
+
+function formatDuration(mins) {
+  if (mins == null || isNaN(mins)) return "--";
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function escapeHtml(str) {
@@ -607,6 +648,7 @@ function render() {
   document.getElementById("nap4-toggle").checked = state.nap4Enabled;
 
   renderSchedule();
+  renderTotals();
   renderTimeline();
   renderPoops();
   renderDrinks();
@@ -646,6 +688,41 @@ function renderSchedule() {
     <span class="times">${formatDisplay(toHHMM(sched.bedtime))}</span>
   </div>`;
   el.innerHTML = html;
+}
+
+// Nap total only counts naps with a logged actual time — estimates aren't
+// real sleep yet. Night sleep spans yesterday's bedtime estimate to
+// today's wake time, so it needs both to be available.
+function renderTotals() {
+  const el = document.getElementById("totals-list");
+  const sched = getDisplayNaps();
+  const napTotalMin = sched
+    ? sched.naps.filter(n => n.hasActual).reduce((sum, n) => sum + (n.end - n.start), 0)
+    : 0;
+
+  let nightMin = null;
+  if (state.wakeTime && state.prevBedtime) {
+    const wakeMin = toMinutes(state.wakeTime);
+    const prevBedMin = toMinutes(state.prevBedtime);
+    nightMin = (1440 - prevBedMin) + wakeMin;
+  }
+  const totalMin = nightMin != null ? napTotalMin + nightMin : null;
+
+  const row = (label, value, target) => `
+    <div class="nap-row">
+      <div class="nap-row-head">
+        <span class="dot"></span>
+        <span class="nap-label">${label}</span>
+        <span class="times">${value}</span>
+      </div>
+      <div class="log-detail">target ${target}</div>
+    </div>`;
+
+  el.innerHTML =
+    row("Naps logged", formatDuration(napTotalMin), `${formatDuration(SLEEP_TARGET_NAP_MIN)}–${formatDuration(SLEEP_TARGET_NAP_MAX)}`) +
+    row("Night sleep", formatDuration(nightMin), formatDuration(SLEEP_TARGET_NIGHT_MIN)) +
+    row("Total sleep", formatDuration(totalMin), `${formatDuration(SLEEP_TARGET_NAP_MIN + SLEEP_TARGET_NIGHT_MIN)}–${formatDuration(SLEEP_TARGET_NAP_MAX + SLEEP_TARGET_NIGHT_MIN)}`) +
+    (nightMin == null ? `<div class="empty-hint">Night sleep needs today's wake time and yesterday's bedtime estimate</div>` : "");
 }
 
 function renderTimeline() {
@@ -702,8 +779,7 @@ function renderTimeline() {
   });
 
   if (state.date === todayISO()) {
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const nowMin = toMinutes(nowHHMM());
     if (nowMin >= dayStart) {
       const line = document.createElement("div");
       line.className = "timeline-now";
@@ -809,12 +885,14 @@ async function loadDay(date) {
   loading = true;
   setStatus("Loading…");
   try {
-    const [sleepRes, poopRes, drinkRes, wakingRes] = await Promise.all([
+    const [sleepRes, poopRes, drinkRes, wakingRes, prevSleepRes] = await Promise.all([
       supabaseClient.from("sleep_log").select("*").eq("date", date).maybeSingle(),
       supabaseClient.from("poop_log").select("*").eq("date", date),
       supabaseClient.from("drink_log").select("*").eq("date", date),
       supabaseClient.from("night_waking_log").select("*").eq("date", date),
+      supabaseClient.from("sleep_log").select("bedtime_estimate").eq("date", addDaysISO(date, -1)).maybeSingle(),
     ]);
+    state.prevBedtime = prevSleepRes.data?.bedtime_estimate ? prevSleepRes.data.bedtime_estimate.slice(0, 5) : "";
 
     if (sleepRes.data) {
       const s = sleepRes.data;
