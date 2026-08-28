@@ -25,12 +25,10 @@ create table if not exists sleep_log (
   nap3_actual_end time,
   nap4_actual_start time,
   nap4_actual_end time,
-  nap1_remarks text,
-  nap2_remarks text,
-  nap3_remarks text,
-  nap4_remarks text,
+  naps_remarks text,
   bedtime_estimate time,
   bedtime_actual time,
+  bedtime_remarks text,
   updated_at timestamptz not null default now()
 );
 alter table sleep_log add column if not exists nap1_actual_start time;
@@ -42,10 +40,8 @@ alter table sleep_log add column if not exists nap3_actual_end time;
 alter table sleep_log add column if not exists nap4_actual_start time;
 alter table sleep_log add column if not exists nap4_actual_end time;
 alter table sleep_log add column if not exists bedtime_actual time;
-alter table sleep_log add column if not exists nap1_remarks text;
-alter table sleep_log add column if not exists nap2_remarks text;
-alter table sleep_log add column if not exists nap3_remarks text;
-alter table sleep_log add column if not exists nap4_remarks text;
+alter table sleep_log add column if not exists naps_remarks text;
+alter table sleep_log add column if not exists bedtime_remarks text;
 
 -- Append-only, individually deletable entries.
 create table if not exists poop_log (

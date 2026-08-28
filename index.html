@@ -569,8 +569,10 @@ let state = {
   date: todayISO(),
   wakeTime: "",
   nap4Enabled: false,
-  actualNaps: { 1: { start: "", end: "", remarks: "" }, 2: { start: "", end: "", remarks: "" }, 3: { start: "", end: "", remarks: "" }, 4: { start: "", end: "", remarks: "" } },
+  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
+  napsRemarks: "",
   actualBedtime: "",
+  bedtimeRemarks: "",
   prevBedtime: "",
   poops: [],
   drinks: [],
@@ -649,7 +651,7 @@ function getDisplayNaps() {
 
   const naps = sched.naps.map((nap, i) => {
     const idx = i + 1;
-    const actual = state.actualNaps[idx] || { start: "", end: "", remarks: "" };
+    const actual = state.actualNaps[idx] || { start: "", end: "" };
     const hasActual = !!(actual.start && actual.end);
     return {
       ...nap,
@@ -660,7 +662,6 @@ function getDisplayNaps() {
       end: hasActual ? toMinutes(actual.end) : nap.end,
       actualStart: actual.start || "",
       actualEnd: actual.end || "",
-      remarks: actual.remarks || "",
       hasActual,
     };
   });
@@ -710,15 +711,15 @@ function renderSchedule() {
             <input type="time" data-nap="${nap.idx}" data-field="end" value="${nap.actualEnd}">
           </div>
         </div>
-        <div class="add-form">
-          <div>
-            <label>Remarks</label>
-            <input type="text" data-nap="${nap.idx}" data-field="remarks" value="${escapeAttr(nap.remarks)}" placeholder="optional">
-          </div>
-        </div>
       </div>`;
   });
   html += `
+    <div class="add-form">
+      <div>
+        <label>Naps remarks</label>
+        <input type="text" data-naps-remarks="1" value="${escapeAttr(state.napsRemarks)}" placeholder="optional">
+      </div>
+    </div>
     <div class="nap-row bedtime">
       <div class="nap-row-head">
         <span class="dot"></span>
@@ -729,6 +730,12 @@ function renderSchedule() {
         <div>
           <label>Actual bedtime</label>
           <input type="time" data-bedtime="actual" value="${state.actualBedtime || ""}">
+        </div>
+      </div>
+      <div class="add-form">
+        <div>
+          <label>Remarks</label>
+          <input type="text" data-bedtime-remarks="1" value="${escapeAttr(state.bedtimeRemarks)}" placeholder="optional">
         </div>
       </div>
     </div>`;
@@ -946,18 +953,22 @@ async function loadDay(date) {
       const s = sleepRes.data;
       state.wakeTime = s.wake_time ? s.wake_time.slice(0, 5) : "";
       state.nap4Enabled = !!s.nap4_enabled;
+      state.napsRemarks = s.naps_remarks || "";
       state.actualBedtime = s.bedtime_actual ? s.bedtime_actual.slice(0, 5) : "";
+      state.bedtimeRemarks = s.bedtime_remarks || "";
       state.actualNaps = {
-        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "", remarks: s.nap1_remarks || "" },
-        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "", remarks: s.nap2_remarks || "" },
-        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "", remarks: s.nap3_remarks || "" },
-        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "", remarks: s.nap4_remarks || "" },
+        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "" },
+        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "" },
+        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "" },
+        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "" },
       };
     } else {
       state.wakeTime = "";
       state.nap4Enabled = false;
+      state.napsRemarks = "";
       state.actualBedtime = "";
-      state.actualNaps = { 1: { start: "", end: "", remarks: "" }, 2: { start: "", end: "", remarks: "" }, 3: { start: "", end: "", remarks: "" }, 4: { start: "", end: "", remarks: "" } };
+      state.bedtimeRemarks = "";
+      state.actualNaps = { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } };
     }
     state.poops = (poopRes.data || []).map(p => ({
       id: p.id,
@@ -1017,12 +1028,10 @@ async function saveSleepLog() {
     nap3_actual_end: state.actualNaps[3]?.end ? state.actualNaps[3].end + ":00" : null,
     nap4_actual_start: state.actualNaps[4]?.start ? state.actualNaps[4].start + ":00" : null,
     nap4_actual_end: state.actualNaps[4]?.end ? state.actualNaps[4].end + ":00" : null,
-    nap1_remarks: state.actualNaps[1]?.remarks || null,
-    nap2_remarks: state.actualNaps[2]?.remarks || null,
-    nap3_remarks: state.actualNaps[3]?.remarks || null,
-    nap4_remarks: state.actualNaps[4]?.remarks || null,
+    naps_remarks: state.napsRemarks || null,
     bedtime_estimate: toTime(getDisplayNaps()?.bedtime),
     bedtime_actual: state.actualBedtime ? state.actualBedtime + ":00" : null,
+    bedtime_remarks: state.bedtimeRemarks || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -1188,6 +1197,16 @@ document.getElementById("nap4-toggle").addEventListener("change", (e) => {
 document.getElementById("schedule-list").addEventListener("change", (e) => {
   if (e.target.dataset.bedtime === "actual") {
     state.actualBedtime = e.target.value;
+    saveSleepLog();
+    return;
+  }
+  if (e.target.dataset.napsRemarks) {
+    state.napsRemarks = e.target.value;
+    saveSleepLog();
+    return;
+  }
+  if (e.target.dataset.bedtimeRemarks) {
+    state.bedtimeRemarks = e.target.value;
     saveSleepLog();
     return;
   }
