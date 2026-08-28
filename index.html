@@ -569,7 +569,7 @@ let state = {
   date: todayISO(),
   wakeTime: "",
   nap4Enabled: false,
-  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
+  actualNaps: { 1: { start: "", end: "", remarks: "" }, 2: { start: "", end: "", remarks: "" }, 3: { start: "", end: "", remarks: "" }, 4: { start: "", end: "", remarks: "" } },
   actualBedtime: "",
   prevBedtime: "",
   poops: [],
@@ -607,6 +607,16 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// For pre-filling a double-quoted HTML attribute (e.g. value="...") with
+// stored text — textContent-based escaping alone doesn't escape quotes.
+function escapeAttr(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // ---- schedule computation --------------------------------------------
 function computeSchedule(wakeTime, nap4Enabled) {
   const wakeMin = toMinutes(wakeTime);
@@ -639,7 +649,7 @@ function getDisplayNaps() {
 
   const naps = sched.naps.map((nap, i) => {
     const idx = i + 1;
-    const actual = state.actualNaps[idx] || { start: "", end: "" };
+    const actual = state.actualNaps[idx] || { start: "", end: "", remarks: "" };
     const hasActual = !!(actual.start && actual.end);
     return {
       ...nap,
@@ -650,6 +660,7 @@ function getDisplayNaps() {
       end: hasActual ? toMinutes(actual.end) : nap.end,
       actualStart: actual.start || "",
       actualEnd: actual.end || "",
+      remarks: actual.remarks || "",
       hasActual,
     };
   });
@@ -697,6 +708,12 @@ function renderSchedule() {
           <div>
             <label>Actual end</label>
             <input type="time" data-nap="${nap.idx}" data-field="end" value="${nap.actualEnd}">
+          </div>
+        </div>
+        <div class="add-form">
+          <div>
+            <label>Remarks</label>
+            <input type="text" data-nap="${nap.idx}" data-field="remarks" value="${escapeAttr(nap.remarks)}" placeholder="optional">
           </div>
         </div>
       </div>`;
@@ -931,16 +948,16 @@ async function loadDay(date) {
       state.nap4Enabled = !!s.nap4_enabled;
       state.actualBedtime = s.bedtime_actual ? s.bedtime_actual.slice(0, 5) : "";
       state.actualNaps = {
-        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "" },
-        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "" },
-        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "" },
-        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "" },
+        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "", remarks: s.nap1_remarks || "" },
+        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "", remarks: s.nap2_remarks || "" },
+        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "", remarks: s.nap3_remarks || "" },
+        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "", remarks: s.nap4_remarks || "" },
       };
     } else {
       state.wakeTime = "";
       state.nap4Enabled = false;
       state.actualBedtime = "";
-      state.actualNaps = { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } };
+      state.actualNaps = { 1: { start: "", end: "", remarks: "" }, 2: { start: "", end: "", remarks: "" }, 3: { start: "", end: "", remarks: "" }, 4: { start: "", end: "", remarks: "" } };
     }
     state.poops = (poopRes.data || []).map(p => ({
       id: p.id,
@@ -1000,6 +1017,10 @@ async function saveSleepLog() {
     nap3_actual_end: state.actualNaps[3]?.end ? state.actualNaps[3].end + ":00" : null,
     nap4_actual_start: state.actualNaps[4]?.start ? state.actualNaps[4].start + ":00" : null,
     nap4_actual_end: state.actualNaps[4]?.end ? state.actualNaps[4].end + ":00" : null,
+    nap1_remarks: state.actualNaps[1]?.remarks || null,
+    nap2_remarks: state.actualNaps[2]?.remarks || null,
+    nap3_remarks: state.actualNaps[3]?.remarks || null,
+    nap4_remarks: state.actualNaps[4]?.remarks || null,
     bedtime_estimate: toTime(getDisplayNaps()?.bedtime),
     bedtime_actual: state.actualBedtime ? state.actualBedtime + ":00" : null,
     updated_at: new Date().toISOString(),
