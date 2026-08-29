@@ -25,8 +25,13 @@ create table if not exists sleep_log (
   nap3_actual_end time,
   nap4_actual_start time,
   nap4_actual_end time,
+  nap1_bed_time time,
+  nap2_bed_time time,
+  nap3_bed_time time,
+  nap4_bed_time time,
   naps_remarks text,
   bedtime_estimate time,
+  bedtime_bed_time time,
   bedtime_actual time,
   bedtime_remarks text,
   updated_at timestamptz not null default now()
@@ -39,7 +44,12 @@ alter table sleep_log add column if not exists nap3_actual_start time;
 alter table sleep_log add column if not exists nap3_actual_end time;
 alter table sleep_log add column if not exists nap4_actual_start time;
 alter table sleep_log add column if not exists nap4_actual_end time;
+alter table sleep_log add column if not exists nap1_bed_time time;
+alter table sleep_log add column if not exists nap2_bed_time time;
+alter table sleep_log add column if not exists nap3_bed_time time;
+alter table sleep_log add column if not exists nap4_bed_time time;
 alter table sleep_log add column if not exists bedtime_actual time;
+alter table sleep_log add column if not exists bedtime_bed_time time;
 alter table sleep_log add column if not exists naps_remarks text;
 alter table sleep_log add column if not exists bedtime_remarks text;
 

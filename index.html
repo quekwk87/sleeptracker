@@ -569,8 +569,9 @@ let state = {
   date: todayISO(),
   wakeTime: "",
   nap4Enabled: false,
-  actualNaps: { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } },
+  actualNaps: { 1: { bed: "", start: "", end: "" }, 2: { bed: "", start: "", end: "" }, 3: { bed: "", start: "", end: "" }, 4: { bed: "", start: "", end: "" } },
   napsRemarks: "",
+  bedOnBedTime: "",
   actualBedtime: "",
   bedtimeRemarks: "",
   prevBedtime: "",
@@ -651,7 +652,7 @@ function getDisplayNaps() {
 
   const naps = sched.naps.map((nap, i) => {
     const idx = i + 1;
-    const actual = state.actualNaps[idx] || { start: "", end: "" };
+    const actual = state.actualNaps[idx] || { bed: "", start: "", end: "" };
     const hasActual = !!(actual.start && actual.end);
     return {
       ...nap,
@@ -660,6 +661,7 @@ function getDisplayNaps() {
       estEnd: nap.end,
       start: hasActual ? toMinutes(actual.start) : nap.start,
       end: hasActual ? toMinutes(actual.end) : nap.end,
+      actualBed: actual.bed || "",
       actualStart: actual.start || "",
       actualEnd: actual.end || "",
       hasActual,
@@ -703,11 +705,15 @@ function renderSchedule() {
         </div>
         <div class="add-form">
           <div>
-            <label>Actual start</label>
+            <label>Time in bed</label>
+            <input type="time" data-nap="${nap.idx}" data-field="bed" value="${nap.actualBed}">
+          </div>
+          <div>
+            <label>Time slept</label>
             <input type="time" data-nap="${nap.idx}" data-field="start" value="${nap.actualStart}">
           </div>
           <div>
-            <label>Actual end</label>
+            <label>Time wake</label>
             <input type="time" data-nap="${nap.idx}" data-field="end" value="${nap.actualEnd}">
           </div>
         </div>
@@ -728,7 +734,11 @@ function renderSchedule() {
       </div>
       <div class="add-form">
         <div>
-          <label>Actual bedtime</label>
+          <label>Time on bed</label>
+          <input type="time" data-bedtime="onbed" value="${state.bedOnBedTime || ""}">
+        </div>
+        <div>
+          <label>Time asleep</label>
           <input type="time" data-bedtime="actual" value="${state.actualBedtime || ""}">
         </div>
       </div>
@@ -954,21 +964,23 @@ async function loadDay(date) {
       state.wakeTime = s.wake_time ? s.wake_time.slice(0, 5) : "";
       state.nap4Enabled = !!s.nap4_enabled;
       state.napsRemarks = s.naps_remarks || "";
+      state.bedOnBedTime = s.bedtime_bed_time ? s.bedtime_bed_time.slice(0, 5) : "";
       state.actualBedtime = s.bedtime_actual ? s.bedtime_actual.slice(0, 5) : "";
       state.bedtimeRemarks = s.bedtime_remarks || "";
       state.actualNaps = {
-        1: { start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "" },
-        2: { start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "" },
-        3: { start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "" },
-        4: { start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "" },
+        1: { bed: s.nap1_bed_time ? s.nap1_bed_time.slice(0, 5) : "", start: s.nap1_actual_start ? s.nap1_actual_start.slice(0, 5) : "", end: s.nap1_actual_end ? s.nap1_actual_end.slice(0, 5) : "" },
+        2: { bed: s.nap2_bed_time ? s.nap2_bed_time.slice(0, 5) : "", start: s.nap2_actual_start ? s.nap2_actual_start.slice(0, 5) : "", end: s.nap2_actual_end ? s.nap2_actual_end.slice(0, 5) : "" },
+        3: { bed: s.nap3_bed_time ? s.nap3_bed_time.slice(0, 5) : "", start: s.nap3_actual_start ? s.nap3_actual_start.slice(0, 5) : "", end: s.nap3_actual_end ? s.nap3_actual_end.slice(0, 5) : "" },
+        4: { bed: s.nap4_bed_time ? s.nap4_bed_time.slice(0, 5) : "", start: s.nap4_actual_start ? s.nap4_actual_start.slice(0, 5) : "", end: s.nap4_actual_end ? s.nap4_actual_end.slice(0, 5) : "" },
       };
     } else {
       state.wakeTime = "";
       state.nap4Enabled = false;
       state.napsRemarks = "";
+      state.bedOnBedTime = "";
       state.actualBedtime = "";
       state.bedtimeRemarks = "";
-      state.actualNaps = { 1: { start: "", end: "" }, 2: { start: "", end: "" }, 3: { start: "", end: "" }, 4: { start: "", end: "" } };
+      state.actualNaps = { 1: { bed: "", start: "", end: "" }, 2: { bed: "", start: "", end: "" }, 3: { bed: "", start: "", end: "" }, 4: { bed: "", start: "", end: "" } };
     }
     state.poops = (poopRes.data || []).map(p => ({
       id: p.id,
@@ -1028,8 +1040,13 @@ async function saveSleepLog() {
     nap3_actual_end: state.actualNaps[3]?.end ? state.actualNaps[3].end + ":00" : null,
     nap4_actual_start: state.actualNaps[4]?.start ? state.actualNaps[4].start + ":00" : null,
     nap4_actual_end: state.actualNaps[4]?.end ? state.actualNaps[4].end + ":00" : null,
+    nap1_bed_time: state.actualNaps[1]?.bed ? state.actualNaps[1].bed + ":00" : null,
+    nap2_bed_time: state.actualNaps[2]?.bed ? state.actualNaps[2].bed + ":00" : null,
+    nap3_bed_time: state.actualNaps[3]?.bed ? state.actualNaps[3].bed + ":00" : null,
+    nap4_bed_time: state.actualNaps[4]?.bed ? state.actualNaps[4].bed + ":00" : null,
     naps_remarks: state.napsRemarks || null,
     bedtime_estimate: toTime(getDisplayNaps()?.bedtime),
+    bedtime_bed_time: state.bedOnBedTime ? state.bedOnBedTime + ":00" : null,
     bedtime_actual: state.actualBedtime ? state.actualBedtime + ":00" : null,
     bedtime_remarks: state.bedtimeRemarks || null,
     updated_at: new Date().toISOString(),
@@ -1200,6 +1217,11 @@ document.getElementById("schedule-list").addEventListener("change", (e) => {
     saveSleepLog();
     return;
   }
+  if (e.target.dataset.bedtime === "onbed") {
+    state.bedOnBedTime = e.target.value;
+    saveSleepLog();
+    return;
+  }
   if (e.target.dataset.napsRemarks) {
     state.napsRemarks = e.target.value;
     saveSleepLog();
@@ -1213,7 +1235,7 @@ document.getElementById("schedule-list").addEventListener("change", (e) => {
   const napIdx = e.target.dataset.nap;
   const field = e.target.dataset.field;
   if (!napIdx || !field) return;
-  if (!state.actualNaps[napIdx]) state.actualNaps[napIdx] = { start: "", end: "" };
+  if (!state.actualNaps[napIdx]) state.actualNaps[napIdx] = { bed: "", start: "", end: "" };
   state.actualNaps[napIdx][field] = e.target.value;
   renderTimeline();
   saveSleepLog();
