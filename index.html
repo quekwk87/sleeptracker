@@ -621,55 +621,46 @@ function escapeAttr(str) {
 }
 
 // ---- schedule computation --------------------------------------------
-function computeSchedule(wakeTime, nap4Enabled) {
-  const wakeMin = toMinutes(wakeTime);
+// Naps cascade sequentially: each nap's estimate starts one awake window
+// after the PREVIOUS nap ended — using that previous nap's actual end
+// once logged, not just its estimate. So logging nap 1's actual wake
+// time reshapes nap 2's estimate (and everything after it), instead of
+// every nap's estimate staying pinned to the morning wake time alone.
+function getDisplayNaps() {
+  const wakeMin = toMinutes(state.wakeTime);
   if (wakeMin === null) return null;
+
+  const durations = [...NAP_DURATIONS_MIN];
+  if (state.nap4Enabled) durations.push(NAP4_DURATION_MIN);
 
   const naps = [];
   let cursor = wakeMin;
-  for (let i = 0; i < NAP_DURATIONS_MIN.length; i++) {
-    const start = cursor + AWAKE_WINDOW_MIN;
-    const end = start + NAP_DURATIONS_MIN[i];
-    naps.push({ label: `Nap ${i + 1}`, start, end });
-    cursor = end;
-  }
-  if (nap4Enabled) {
-    const start = cursor + AWAKE_WINDOW_MIN;
-    const end = start + NAP4_DURATION_MIN;
-    naps.push({ label: "Nap 4", start, end, isNap4: true });
-    cursor = end;
-  }
-  const bedtime = cursor + BEDTIME_GAP_MIN;
-  return { naps, bedtime };
-}
-
-// Merges the estimated schedule with any actual nap times logged so far.
-// Bedtime is estimated from the last nap's actual end when logged, else
-// falls back to its estimated end.
-function getDisplayNaps() {
-  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
-  if (!sched) return null;
-
-  const naps = sched.naps.map((nap, i) => {
+  durations.forEach((dur, i) => {
     const idx = i + 1;
     const actual = state.actualNaps[idx] || { bed: "", start: "", end: "" };
     const hasActual = !!(actual.start && actual.end);
-    return {
-      ...nap,
+
+    const estStart = cursor + AWAKE_WINDOW_MIN;
+    const estEnd = estStart + dur;
+
+    naps.push({
+      label: idx === 4 ? "Nap 4" : `Nap ${idx}`,
       idx,
-      estStart: nap.start,
-      estEnd: nap.end,
-      start: hasActual ? toMinutes(actual.start) : nap.start,
-      end: hasActual ? toMinutes(actual.end) : nap.end,
+      isNap4: idx === 4,
+      estStart,
+      estEnd,
+      start: hasActual ? toMinutes(actual.start) : estStart,
+      end: hasActual ? toMinutes(actual.end) : estEnd,
       actualBed: actual.bed || "",
       actualStart: actual.start || "",
       actualEnd: actual.end || "",
       hasActual,
-    };
+    });
+
+    cursor = hasActual ? toMinutes(actual.end) : estEnd;
   });
 
-  const lastNap = naps[naps.length - 1];
-  const bedtime = lastNap.end + BEDTIME_GAP_MIN;
+  const bedtime = cursor + BEDTIME_GAP_MIN;
   return { naps, bedtime };
 }
 
@@ -1017,21 +1008,21 @@ async function loadDay(date) {
 
 async function saveSleepLog() {
   if (!configured) return;
-  const sched = computeSchedule(state.wakeTime, state.nap4Enabled);
+  const sched = getDisplayNaps();
   const toTime = (mins) => mins == null ? null : toHHMM(mins) + ":00";
 
   const row = {
     date: state.date,
     wake_time: state.wakeTime ? state.wakeTime + ":00" : null,
     nap4_enabled: state.nap4Enabled,
-    nap1_start: sched ? toTime(sched.naps[0]?.start) : null,
-    nap1_end: sched ? toTime(sched.naps[0]?.end) : null,
-    nap2_start: sched ? toTime(sched.naps[1]?.start) : null,
-    nap2_end: sched ? toTime(sched.naps[1]?.end) : null,
-    nap3_start: sched ? toTime(sched.naps[2]?.start) : null,
-    nap3_end: sched ? toTime(sched.naps[2]?.end) : null,
-    nap4_start: sched && state.nap4Enabled ? toTime(sched.naps[3]?.start) : null,
-    nap4_end: sched && state.nap4Enabled ? toTime(sched.naps[3]?.end) : null,
+    nap1_start: sched ? toTime(sched.naps[0]?.estStart) : null,
+    nap1_end: sched ? toTime(sched.naps[0]?.estEnd) : null,
+    nap2_start: sched ? toTime(sched.naps[1]?.estStart) : null,
+    nap2_end: sched ? toTime(sched.naps[1]?.estEnd) : null,
+    nap3_start: sched ? toTime(sched.naps[2]?.estStart) : null,
+    nap3_end: sched ? toTime(sched.naps[2]?.estEnd) : null,
+    nap4_start: sched && state.nap4Enabled ? toTime(sched.naps[3]?.estStart) : null,
+    nap4_end: sched && state.nap4Enabled ? toTime(sched.naps[3]?.estEnd) : null,
     nap1_actual_start: state.actualNaps[1]?.start ? state.actualNaps[1].start + ":00" : null,
     nap1_actual_end: state.actualNaps[1]?.end ? state.actualNaps[1].end + ":00" : null,
     nap2_actual_start: state.actualNaps[2]?.start ? state.actualNaps[2].start + ":00" : null,
