@@ -257,6 +257,33 @@
     color: var(--muted);
     margin-top: 6px;
   }
+  .tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 10px 12px 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+    padding: 9px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    min-height: 40px;
+    touch-action: manipulation;
+  }
+  .tab-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
   ul.log-list {
     list-style: none;
     margin: 0;
@@ -349,159 +376,177 @@
     <input type="date" id="date-input">
   </div>
 
-  <div class="card">
-    <h2>⏰ Wake time</h2>
-    <label for="wake-input">This morning's wake-up</label>
-    <input type="time" id="wake-input">
+  <nav class="tabs">
+    <button class="tab-btn" data-tab="sleep">😴 Sleep</button>
+    <button class="tab-btn" data-tab="poop">💩 Poop</button>
+    <button class="tab-btn" data-tab="drink">🍼 Drink</button>
+    <button class="tab-btn" data-tab="night">🌃 Night</button>
+    <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+  </nav>
+
+  <div class="tab-panel" data-tab="sleep">
+    <div class="card">
+      <h2>⏰ Wake time</h2>
+      <label for="wake-input">This morning's wake-up</label>
+      <input type="time" id="wake-input">
+    </div>
+
+    <div class="card">
+      <h2>😴 Naps</h2>
+      <div id="schedule-list" class="schedule-list">
+        <div class="empty-hint">Enter a wake time to see estimated naps</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📊 Timeline</h2>
+      <div class="timeline-wrap" id="timeline"></div>
+      <div class="timeline-labels">
+        <span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+      </div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--nap)"></i>naps</span>
+        <span><i class="sw" style="background:var(--nap-4)"></i>nap 4</span>
+        <span><i class="sw" style="background:var(--poop)"></i>poop</span>
+        <span><i class="sw" style="background:var(--drink)"></i>drink</span>
+        <span><i class="sw" style="background:var(--night)"></i>night waking</span>
+      </div>
+      <div class="legend-hint">Lighter/faded nap blocks are estimates — log the actual start/end below to fill them in.</div>
+    </div>
+
+    <div class="card">
+      <h2>💤 Sleep totals</h2>
+      <div id="totals-list" class="schedule-list"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <h2>😴 Naps</h2>
-    <div id="schedule-list" class="schedule-list">
-      <div class="empty-hint">Enter a wake time to see estimated naps</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>📊 Timeline</h2>
-    <div class="timeline-wrap" id="timeline"></div>
-    <div class="timeline-labels">
-      <span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
-    </div>
-    <div class="legend">
-      <span><i class="sw" style="background:var(--nap)"></i>naps</span>
-      <span><i class="sw" style="background:var(--nap-4)"></i>nap 4</span>
-      <span><i class="sw" style="background:var(--poop)"></i>poop</span>
-      <span><i class="sw" style="background:var(--drink)"></i>drink</span>
-      <span><i class="sw" style="background:var(--night)"></i>night waking</span>
-    </div>
-    <div class="legend-hint">Lighter/faded nap blocks are estimates — log the actual start/end below to fill them in.</div>
-  </div>
-
-  <div class="card">
-    <h2>💤 Sleep totals</h2>
-    <div id="totals-list" class="schedule-list"></div>
-  </div>
-
-  <div class="card">
-    <h2>💩 Poop log</h2>
-    <div class="add-form">
-      <div>
-        <label for="poop-time">Time</label>
-        <input type="time" id="poop-time">
-      </div>
-      <div>
-        <label for="poop-remarks">Remarks</label>
-        <input type="text" id="poop-remarks" placeholder="optional">
-      </div>
-    </div>
-    <button class="btn-primary" id="add-poop-btn" style="margin-top:10px; width:100%">Log poop</button>
-    <ul class="log-list" id="poop-list" style="margin-top:12px"></ul>
-  </div>
-
-  <div class="card">
-    <h2>🍼 Drink log</h2>
-    <div class="add-form">
-      <div>
-        <label for="drink-time">Time</label>
-        <input type="time" id="drink-time">
-      </div>
-      <div>
-        <label for="drink-type">Type</label>
-        <select id="drink-type">
-          <option value="volume">Volume (ml)</option>
-          <option value="breastfeed">Breastfeed</option>
-        </select>
-      </div>
-    </div>
-    <div class="add-form" id="volume-fields">
-      <div>
-        <label for="drink-volume">Amount (ml)</label>
-        <input type="number" id="drink-volume" min="0" step="5" placeholder="e.g. 120">
-      </div>
-    </div>
-    <div class="add-form" id="breastfeed-fields" style="display:none">
-      <div>
-        <label for="drink-minutes">Minutes</label>
-        <input type="number" id="drink-minutes" min="0" step="1" placeholder="e.g. 15">
-      </div>
-      <div>
-        <label for="drink-amount">Amount (optional)</label>
-        <input type="text" id="drink-amount" placeholder="e.g. both sides">
-      </div>
-    </div>
-    <div class="add-form">
-      <div>
-        <label for="drink-remarks">Remarks</label>
-        <input type="text" id="drink-remarks" placeholder="optional">
-      </div>
-    </div>
-    <button class="btn-primary" id="add-drink-btn" style="margin-top:10px; width:100%">Log drink</button>
-    <ul class="log-list" id="drink-list" style="margin-top:12px"></ul>
-  </div>
-
-  <div class="card">
-    <h2>🌃 Night waking</h2>
-    <div class="add-form">
-      <div>
-        <label for="waking-time">Time</label>
-        <input type="time" id="waking-time">
-      </div>
-    </div>
-    <div class="toggle-row">
-      <span>Drank milk?</span>
-      <label class="switch">
-        <input type="checkbox" id="waking-milk-toggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div id="waking-milk-section" style="display:none">
+  <div class="tab-panel" data-tab="poop">
+    <div class="card">
+      <h2>💩 Poop log</h2>
       <div class="add-form">
         <div>
-          <label for="waking-type">Type</label>
-          <select id="waking-type">
-            <option value="volume">Volume (ml)</option>
+          <label for="poop-time">Time</label>
+          <input type="time" id="poop-time">
+        </div>
+        <div>
+          <label for="poop-remarks">Remarks</label>
+          <input type="text" id="poop-remarks" placeholder="optional">
+        </div>
+      </div>
+      <button class="btn-primary" id="add-poop-btn" style="margin-top:10px; width:100%">Log poop</button>
+      <ul class="log-list" id="poop-list" style="margin-top:12px"></ul>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="drink">
+    <div class="card">
+      <h2>🍼 Drink log</h2>
+      <div class="add-form">
+        <div>
+          <label for="drink-time">Time</label>
+          <input type="time" id="drink-time">
+        </div>
+        <div>
+          <label for="drink-type">Type</label>
+          <select id="drink-type">
             <option value="breastfeed">Breastfeed</option>
+            <option value="volume">Volume (ml)</option>
           </select>
         </div>
       </div>
-      <div class="add-form" id="waking-volume-fields">
+      <div class="add-form" id="breastfeed-fields">
         <div>
-          <label for="waking-volume">Amount (ml)</label>
-          <input type="number" id="waking-volume" min="0" step="5" placeholder="e.g. 90">
+          <label for="drink-minutes">Minutes</label>
+          <input type="number" id="drink-minutes" min="0" step="1" placeholder="e.g. 15">
+        </div>
+        <div>
+          <label for="drink-amount">Amount (optional)</label>
+          <input type="text" id="drink-amount" placeholder="e.g. both sides">
         </div>
       </div>
-      <div class="add-form" id="waking-breastfeed-fields" style="display:none">
+      <div class="add-form" id="volume-fields" style="display:none">
         <div>
-          <label for="waking-minutes">Minutes</label>
-          <input type="number" id="waking-minutes" min="0" step="1" placeholder="e.g. 10">
-        </div>
-        <div>
-          <label for="waking-amount">Amount (optional)</label>
-          <input type="text" id="waking-amount" placeholder="e.g. both sides">
+          <label for="drink-volume">Amount (ml)</label>
+          <input type="number" id="drink-volume" min="0" step="5" placeholder="e.g. 120">
         </div>
       </div>
+      <div class="add-form">
+        <div>
+          <label for="drink-remarks">Remarks</label>
+          <input type="text" id="drink-remarks" placeholder="optional">
+        </div>
+      </div>
+      <button class="btn-primary" id="add-drink-btn" style="margin-top:10px; width:100%">Log drink</button>
+      <ul class="log-list" id="drink-list" style="margin-top:12px"></ul>
     </div>
-    <div class="add-form">
-      <div>
-        <label for="waking-remarks">Remarks</label>
-        <input type="text" id="waking-remarks" placeholder="optional">
-      </div>
-    </div>
-    <button class="btn-primary" id="add-waking-btn" style="margin-top:10px; width:100%">Log waking</button>
-    <ul class="log-list" id="waking-list" style="margin-top:12px"></ul>
   </div>
 
-  <div class="card">
-    <h2>⚙️ Settings</h2>
-    <div class="add-form">
-      <div>
-        <label for="config-total-sleep">Total sleep target (hours)</label>
-        <input type="number" id="config-total-sleep" min="0" step="0.25">
+  <div class="tab-panel" data-tab="night">
+    <div class="card">
+      <h2>🌃 Night waking</h2>
+      <div class="add-form">
+        <div>
+          <label for="waking-time">Time</label>
+          <input type="time" id="waking-time">
+        </div>
       </div>
+      <div class="toggle-row">
+        <span>Drank milk?</span>
+        <label class="switch">
+          <input type="checkbox" id="waking-milk-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="waking-milk-section" style="display:none">
+        <div class="add-form">
+          <div>
+            <label for="waking-type">Type</label>
+            <select id="waking-type">
+              <option value="breastfeed">Breastfeed</option>
+              <option value="volume">Volume (ml)</option>
+            </select>
+          </div>
+        </div>
+        <div class="add-form" id="waking-breastfeed-fields">
+          <div>
+            <label for="waking-minutes">Minutes</label>
+            <input type="number" id="waking-minutes" min="0" step="1" placeholder="e.g. 10">
+          </div>
+          <div>
+            <label for="waking-amount">Amount (optional)</label>
+            <input type="text" id="waking-amount" placeholder="e.g. both sides">
+          </div>
+        </div>
+        <div class="add-form" id="waking-volume-fields" style="display:none">
+          <div>
+            <label for="waking-volume">Amount (ml)</label>
+            <input type="number" id="waking-volume" min="0" step="5" placeholder="e.g. 90">
+          </div>
+        </div>
+      </div>
+      <div class="add-form">
+        <div>
+          <label for="waking-remarks">Remarks</label>
+          <input type="text" id="waking-remarks" placeholder="optional">
+        </div>
+      </div>
+      <button class="btn-primary" id="add-waking-btn" style="margin-top:10px; width:100%">Log waking</button>
+      <ul class="log-list" id="waking-list" style="margin-top:12px"></ul>
     </div>
-    <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
-    <div class="legend-hint">Shared by both parents — changes here apply to everyone's estimates.</div>
+  </div>
+
+  <div class="tab-panel" data-tab="settings">
+    <div class="card">
+      <h2>⚙️ Settings</h2>
+      <div class="add-form">
+        <div>
+          <label for="config-total-sleep">Total sleep target (hours)</label>
+          <input type="number" id="config-total-sleep" min="0" step="0.25">
+        </div>
+      </div>
+      <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
+      <div class="legend-hint">Shared by both parents — changes here apply to everyone's estimates.</div>
+    </div>
   </div>
 
   <div class="status" id="status"></div>
@@ -1374,8 +1419,29 @@ document.getElementById("config-naps-list").addEventListener("change", (e) => {
   saveConfig();
 });
 
+// ---- tabs -----------------------------------------------------------
+function switchTab(tab) {
+  document.querySelectorAll(".tab-panel").forEach(el => {
+    el.classList.toggle("active", el.dataset.tab === tab);
+  });
+  document.querySelectorAll(".tab-btn").forEach(el => {
+    el.classList.toggle("active", el.dataset.tab === tab);
+  });
+  try { localStorage.setItem("avril-active-tab", tab); } catch (e) {}
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+
 // ---- init -----------------------------------------------------------
 document.getElementById("date-input").value = state.date;
+let initialTab = "sleep";
+try {
+  const saved = localStorage.getItem("avril-active-tab");
+  if (saved) initialTab = saved;
+} catch (e) {}
+switchTab(initialTab);
 renderConfig();
 loadConfig();
 loadDay(state.date);
