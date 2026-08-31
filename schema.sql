@@ -90,6 +90,25 @@ create table if not exists night_waking_log (
   created_at timestamptz not null default now()
 );
 
+-- Shared app settings: total sleep target and per-nap duration/enabled,
+-- used to compute nap estimates and bedtime instead of hardcoding them.
+-- Single shared row (id is always `true`) so both parents see the same
+-- config — not tied to any date.
+create table if not exists app_config (
+  id boolean primary key default true check (id),
+  total_sleep_target_min integer not null default 960,
+  nap1_duration_min integer not null default 90,
+  nap1_enabled boolean not null default true,
+  nap2_duration_min integer not null default 90,
+  nap2_enabled boolean not null default true,
+  nap3_duration_min integer not null default 30,
+  nap3_enabled boolean not null default true,
+  nap4_duration_min integer not null default 30,
+  nap4_enabled boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+insert into app_config (id) values (true) on conflict (id) do nothing;
+
 create index if not exists poop_log_date_idx on poop_log (date);
 create index if not exists drink_log_date_idx on drink_log (date);
 create index if not exists night_waking_log_date_idx on night_waking_log (date);
@@ -98,6 +117,7 @@ alter table sleep_log enable row level security;
 alter table poop_log enable row level security;
 alter table drink_log enable row level security;
 alter table night_waking_log enable row level security;
+alter table app_config enable row level security;
 
 -- No login screen: privacy relies on the app URL + Supabase keys being
 -- unguessable, matching the tantrumtracker setup. Anyone with the anon
@@ -110,5 +130,7 @@ drop policy if exists "anon full access drink_log" on drink_log;
 create policy "anon full access drink_log" on drink_log for all using (true) with check (true);
 drop policy if exists "anon full access night_waking_log" on night_waking_log;
 create policy "anon full access night_waking_log" on night_waking_log for all using (true) with check (true);
+drop policy if exists "anon full access app_config" on app_config;
+create policy "anon full access app_config" on app_config for all using (true) with check (true);
 
-grant all on sleep_log, poop_log, drink_log, night_waking_log to anon, authenticated;
+grant all on sleep_log, poop_log, drink_log, night_waking_log, app_config to anon, authenticated;

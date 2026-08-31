@@ -353,13 +353,6 @@
     <h2>⏰ Wake time</h2>
     <label for="wake-input">This morning's wake-up</label>
     <input type="time" id="wake-input">
-    <div class="toggle-row">
-      <span>4th nap</span>
-      <label class="switch">
-        <input type="checkbox" id="nap4-toggle">
-        <span class="slider"></span>
-      </label>
-    </div>
   </div>
 
   <div class="card">
@@ -499,6 +492,18 @@
     <ul class="log-list" id="waking-list" style="margin-top:12px"></ul>
   </div>
 
+  <div class="card">
+    <h2>⚙️ Settings</h2>
+    <div class="add-form">
+      <div>
+        <label for="config-total-sleep">Total sleep target (hours)</label>
+        <input type="number" id="config-total-sleep" min="0" step="0.25">
+      </div>
+    </div>
+    <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
+    <div class="legend-hint">Shared by both parents — changes here apply to everyone's estimates.</div>
+  </div>
+
   <div class="status" id="status"></div>
 </main>
 
@@ -512,15 +517,21 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ---------------------------------------------------------------------
 
 const AWAKE_WINDOW_MIN = 120;       // 2h awake before each nap
-const NAP_DURATIONS_MIN = [90, 90, 30]; // nap 1, 2, 3
-const NAP4_DURATION_MIN = 30;
 const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
 
-// Reference sleep ranges shown against the day's totals. Edit these to
-// change the targets.
-const SLEEP_TARGET_NAP_MIN = 3.5 * 60;  // 3.5h
-const SLEEP_TARGET_NAP_MAX = 4 * 60;    // 4h
-const SLEEP_TARGET_NIGHT_MIN = 12 * 60; // 12h
+// Fallback used before the shared config loads from Supabase (or if
+// nothing has been saved there yet). Editable live via the Settings card.
+function defaultConfig() {
+  return {
+    totalSleepTargetMin: 16 * 60,
+    naps: [
+      { durationMin: 90, enabled: true },
+      { durationMin: 90, enabled: true },
+      { durationMin: 30, enabled: true },
+      { durationMin: 30, enabled: false },
+    ],
+  };
+}
 
 let supabaseClient = null;
 const configured = SUPABASE_URL !== "SUPABASE_URL" && SUPABASE_ANON_KEY !== "SUPABASE_ANON_KEY";
@@ -568,7 +579,7 @@ function addDaysISO(dateStr, delta) {
 let state = {
   date: todayISO(),
   wakeTime: "",
-  nap4Enabled: false,
+  config: defaultConfig(),
   actualNaps: { 1: { bed: "", start: "", end: "" }, 2: { bed: "", start: "", end: "" }, 3: { bed: "", start: "", end: "" }, 4: { bed: "", start: "", end: "" } },
   napsRemarks: "",
   bedOnBedTime: "",
@@ -630,21 +641,19 @@ function getDisplayNaps() {
   const wakeMin = toMinutes(state.wakeTime);
   if (wakeMin === null) return null;
 
-  const durations = [...NAP_DURATIONS_MIN];
-  if (state.nap4Enabled) durations.push(NAP4_DURATION_MIN);
-
   const naps = [];
   let cursor = wakeMin;
-  durations.forEach((dur, i) => {
+  state.config.naps.forEach((napCfg, i) => {
+    if (!napCfg.enabled) return;
     const idx = i + 1;
     const actual = state.actualNaps[idx] || { bed: "", start: "", end: "" };
     const hasActual = !!(actual.start && actual.end);
 
     const estStart = cursor + AWAKE_WINDOW_MIN;
-    const estEnd = estStart + dur;
+    const estEnd = estStart + napCfg.durationMin;
 
     naps.push({
-      label: idx === 4 ? "Nap 4" : `Nap ${idx}`,
+      label: `Nap ${idx}`,
       idx,
       isNap4: idx === 4,
       estStart,
@@ -668,7 +677,6 @@ function getDisplayNaps() {
 function render() {
   document.getElementById("date-input").value = state.date;
   document.getElementById("wake-input").value = state.wakeTime || "";
-  document.getElementById("nap4-toggle").checked = state.nap4Enabled;
 
   renderSchedule();
   renderTotals();
@@ -761,6 +769,12 @@ function renderTotals() {
   }
   const totalMin = nightMin != null ? napTotalMin + nightMin : null;
 
+  // Targets derive from Settings: nap target = sum of enabled naps'
+  // configured durations; night target = total target minus that.
+  const napTargetMin = state.config.naps.filter(n => n.enabled).reduce((sum, n) => sum + n.durationMin, 0);
+  const totalTargetMin = state.config.totalSleepTargetMin;
+  const nightTargetMin = Math.max(totalTargetMin - napTargetMin, 0);
+
   const row = (label, value, target) => `
     <div class="nap-row">
       <div class="nap-row-head">
@@ -772,10 +786,39 @@ function renderTotals() {
     </div>`;
 
   el.innerHTML =
-    row("Naps logged", formatDuration(napTotalMin), `${formatDuration(SLEEP_TARGET_NAP_MIN)}–${formatDuration(SLEEP_TARGET_NAP_MAX)}`) +
-    row("Night sleep", formatDuration(nightMin), formatDuration(SLEEP_TARGET_NIGHT_MIN)) +
-    row("Total sleep", formatDuration(totalMin), `${formatDuration(SLEEP_TARGET_NAP_MIN + SLEEP_TARGET_NIGHT_MIN)}–${formatDuration(SLEEP_TARGET_NAP_MAX + SLEEP_TARGET_NIGHT_MIN)}`) +
+    row("Naps logged", formatDuration(napTotalMin), formatDuration(napTargetMin)) +
+    row("Night sleep", formatDuration(nightMin), formatDuration(nightTargetMin)) +
+    row("Total sleep", formatDuration(totalMin), formatDuration(totalTargetMin)) +
     (nightMin == null ? `<div class="empty-hint">Night sleep needs today's wake time and yesterday's bedtime estimate</div>` : "");
+}
+
+function renderConfig() {
+  document.getElementById("config-total-sleep").value = state.config.totalSleepTargetMin / 60;
+
+  const el = document.getElementById("config-naps-list");
+  el.innerHTML = state.config.naps.map((nap, i) => {
+    const idx = i + 1;
+    return `
+      <div class="nap-row">
+        <div class="nap-row-head">
+          <span class="dot"></span>
+          <span class="nap-label">Nap ${idx}</span>
+        </div>
+        <div class="add-form">
+          <div>
+            <label>Duration (min)</label>
+            <input type="number" min="0" step="5" data-config-nap="${idx}" data-config-field="duration" value="${nap.durationMin}">
+          </div>
+        </div>
+        <div class="toggle-row">
+          <span>Not needed</span>
+          <label class="switch">
+            <input type="checkbox" data-config-nap="${idx}" data-config-field="notneeded" ${nap.enabled ? "" : "checked"}>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>`;
+  }).join("");
 }
 
 function renderTimeline() {
@@ -953,7 +996,6 @@ async function loadDay(date) {
     if (sleepRes.data) {
       const s = sleepRes.data;
       state.wakeTime = s.wake_time ? s.wake_time.slice(0, 5) : "";
-      state.nap4Enabled = !!s.nap4_enabled;
       state.napsRemarks = s.naps_remarks || "";
       state.bedOnBedTime = s.bedtime_bed_time ? s.bedtime_bed_time.slice(0, 5) : "";
       state.actualBedtime = s.bedtime_actual ? s.bedtime_actual.slice(0, 5) : "";
@@ -966,7 +1008,6 @@ async function loadDay(date) {
       };
     } else {
       state.wakeTime = "";
-      state.nap4Enabled = false;
       state.napsRemarks = "";
       state.bedOnBedTime = "";
       state.actualBedtime = "";
@@ -1006,23 +1047,73 @@ async function loadDay(date) {
   render();
 }
 
+// Config is a single shared row (id = true), not tied to a date — both
+// parents see and edit the same nap durations / targets.
+async function loadConfig() {
+  if (!configured) return;
+  const { data, error } = await supabaseClient.from("app_config").select("*").eq("id", true).maybeSingle();
+  if (error) {
+    console.error(error);
+    setStatus("Failed to load settings: " + error.message, true);
+    return;
+  }
+  if (data) {
+    state.config = {
+      totalSleepTargetMin: data.total_sleep_target_min,
+      naps: [
+        { durationMin: data.nap1_duration_min, enabled: data.nap1_enabled },
+        { durationMin: data.nap2_duration_min, enabled: data.nap2_enabled },
+        { durationMin: data.nap3_duration_min, enabled: data.nap3_enabled },
+        { durationMin: data.nap4_duration_min, enabled: data.nap4_enabled },
+      ],
+    };
+  }
+  renderConfig();
+  render();
+}
+
+async function saveConfig() {
+  if (!configured) return;
+  const c = state.config;
+  const row = {
+    id: true,
+    total_sleep_target_min: c.totalSleepTargetMin,
+    nap1_duration_min: c.naps[0].durationMin,
+    nap1_enabled: c.naps[0].enabled,
+    nap2_duration_min: c.naps[1].durationMin,
+    nap2_enabled: c.naps[1].enabled,
+    nap3_duration_min: c.naps[2].durationMin,
+    nap3_enabled: c.naps[2].enabled,
+    nap4_duration_min: c.naps[3].durationMin,
+    nap4_enabled: c.naps[3].enabled,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabaseClient.from("app_config").upsert(row, { onConflict: "id" });
+  if (error) {
+    console.error(error);
+    setStatus("Failed to save settings: " + error.message, true);
+    return;
+  }
+  setStatus("Settings saved");
+}
+
 async function saveSleepLog() {
   if (!configured) return;
   const sched = getDisplayNaps();
   const toTime = (mins) => mins == null ? null : toHHMM(mins) + ":00";
+  const findNap = (idx) => sched?.naps.find(n => n.idx === idx);
 
   const row = {
     date: state.date,
     wake_time: state.wakeTime ? state.wakeTime + ":00" : null,
-    nap4_enabled: state.nap4Enabled,
-    nap1_start: sched ? toTime(sched.naps[0]?.estStart) : null,
-    nap1_end: sched ? toTime(sched.naps[0]?.estEnd) : null,
-    nap2_start: sched ? toTime(sched.naps[1]?.estStart) : null,
-    nap2_end: sched ? toTime(sched.naps[1]?.estEnd) : null,
-    nap3_start: sched ? toTime(sched.naps[2]?.estStart) : null,
-    nap3_end: sched ? toTime(sched.naps[2]?.estEnd) : null,
-    nap4_start: sched && state.nap4Enabled ? toTime(sched.naps[3]?.estStart) : null,
-    nap4_end: sched && state.nap4Enabled ? toTime(sched.naps[3]?.estEnd) : null,
+    nap1_start: toTime(findNap(1)?.estStart),
+    nap1_end: toTime(findNap(1)?.estEnd),
+    nap2_start: toTime(findNap(2)?.estStart),
+    nap2_end: toTime(findNap(2)?.estEnd),
+    nap3_start: toTime(findNap(3)?.estStart),
+    nap3_end: toTime(findNap(3)?.estEnd),
+    nap4_start: toTime(findNap(4)?.estStart),
+    nap4_end: toTime(findNap(4)?.estEnd),
     nap1_actual_start: state.actualNaps[1]?.start ? state.actualNaps[1].start + ":00" : null,
     nap1_actual_end: state.actualNaps[1]?.end ? state.actualNaps[1].end + ":00" : null,
     nap2_actual_start: state.actualNaps[2]?.start ? state.actualNaps[2].start + ":00" : null,
@@ -1196,12 +1287,6 @@ document.getElementById("wake-input").addEventListener("change", (e) => {
   saveSleepLog();
 });
 
-document.getElementById("nap4-toggle").addEventListener("change", (e) => {
-  state.nap4Enabled = e.target.checked;
-  render();
-  saveSleepLog();
-});
-
 document.getElementById("schedule-list").addEventListener("change", (e) => {
   if (e.target.dataset.bedtime === "actual") {
     state.actualBedtime = e.target.value;
@@ -1265,8 +1350,34 @@ document.getElementById("waking-list").addEventListener("click", (e) => {
   if (btn) deleteNightWaking(btn.dataset.id);
 });
 
+document.getElementById("config-total-sleep").addEventListener("change", (e) => {
+  const hours = parseFloat(e.target.value);
+  if (!isNaN(hours) && hours >= 0) state.config.totalSleepTargetMin = Math.round(hours * 60);
+  renderConfig();
+  renderTotals();
+  saveConfig();
+});
+
+document.getElementById("config-naps-list").addEventListener("change", (e) => {
+  const napIdx = e.target.dataset.configNap;
+  const field = e.target.dataset.configField;
+  if (!napIdx || !field) return;
+  const nap = state.config.naps[napIdx - 1];
+  if (field === "duration") {
+    const val = parseInt(e.target.value, 10);
+    if (!isNaN(val) && val >= 0) nap.durationMin = val;
+  } else if (field === "notneeded") {
+    nap.enabled = !e.target.checked;
+  }
+  renderConfig();
+  render();
+  saveConfig();
+});
+
 // ---- init -----------------------------------------------------------
 document.getElementById("date-input").value = state.date;
+renderConfig();
+loadConfig();
 loadDay(state.date);
 setInterval(renderTimeline, 60000);
 </script>
