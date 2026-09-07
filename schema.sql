@@ -97,6 +97,7 @@ create table if not exists night_waking_log (
 create table if not exists app_config (
   id boolean primary key default true check (id),
   total_sleep_target_min integer not null default 960,
+  awake_window_min integer not null default 120,
   nap1_duration_min integer not null default 90,
   nap1_enabled boolean not null default true,
   nap2_duration_min integer not null default 90,
@@ -107,6 +108,7 @@ create table if not exists app_config (
   nap4_enabled boolean not null default false,
   updated_at timestamptz not null default now()
 );
+alter table app_config add column if not exists awake_window_min integer not null default 120;
 insert into app_config (id) values (true) on conflict (id) do nothing;
 
 create index if not exists poop_log_date_idx on poop_log (date);

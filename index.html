@@ -411,7 +411,7 @@
         <span><i class="sw" style="background:var(--drink)"></i>drink</span>
         <span><i class="sw" style="background:var(--night)"></i>night waking</span>
       </div>
-      <div class="legend-hint">Lighter/faded nap blocks are estimates — log the actual start/end below to fill them in.</div>
+      <div class="legend-hint">Lighter/faded nap blocks are estimates — log the actual start/end below to fill them in. A nap that runs short or long adjusts the next nap's target length to compensate (shown as +/-m next to its estimate).</div>
     </div>
 
     <div class="card">
@@ -543,6 +543,10 @@
           <label for="config-total-sleep">Total sleep target (hours)</label>
           <input type="number" id="config-total-sleep" min="0" step="0.25">
         </div>
+        <div>
+          <label for="config-awake-window">Awake window (minutes)</label>
+          <input type="number" id="config-awake-window" min="0" step="5">
+        </div>
       </div>
       <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
       <div class="legend-hint">Shared by both parents — changes here apply to everyone's estimates.</div>
@@ -561,7 +565,6 @@ const SUPABASE_URL = "https://boutrcdpsxiuxmoeiqis.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvdXRyY2Rwc3hpdXhtb2VpcWlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTMzNzcsImV4cCI6MjEwMzA2OTM3N30.DZQfchhz3Q9kiAoFJKbvWrlWk96Bkf1n9mHUe_0tDCE";
 // ---------------------------------------------------------------------
 
-const AWAKE_WINDOW_MIN = 120;       // 2h awake before each nap
 const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
 
 // Fallback used before the shared config loads from Supabase (or if
@@ -569,6 +572,7 @@ const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
 function defaultConfig() {
   return {
     totalSleepTargetMin: 16 * 60,
+    awakeWindowMin: 120, // 2h awake before each nap
     naps: [
       { durationMin: 90, enabled: true },
       { durationMin: 90, enabled: true },
@@ -688,14 +692,21 @@ function getDisplayNaps() {
 
   const naps = [];
   let cursor = wakeMin;
+  // Shortfall/surplus (configured duration minus actual duration) from
+  // the last LOGGED nap carries into the next nap's target length — a
+  // nap that ran short lengthens the next one to make up the difference,
+  // and a nap that ran long shortens it. Resets to 0 after any nap that
+  // hasn't happened yet, since there's nothing to compensate from.
+  let carryMin = 0;
   state.config.naps.forEach((napCfg, i) => {
     if (!napCfg.enabled) return;
     const idx = i + 1;
     const actual = state.actualNaps[idx] || { bed: "", start: "", end: "" };
     const hasActual = !!(actual.start && actual.end);
 
-    const estStart = cursor + AWAKE_WINDOW_MIN;
-    const estEnd = estStart + napCfg.durationMin;
+    const targetDuration = Math.max(napCfg.durationMin + carryMin, 0);
+    const estStart = cursor + state.config.awakeWindowMin;
+    const estEnd = estStart + targetDuration;
 
     naps.push({
       label: `Nap ${idx}`,
@@ -703,6 +714,8 @@ function getDisplayNaps() {
       isNap4: idx === 4,
       estStart,
       estEnd,
+      targetDuration,
+      configDuration: napCfg.durationMin,
       start: hasActual ? toMinutes(actual.start) : estStart,
       end: hasActual ? toMinutes(actual.end) : estEnd,
       actualBed: actual.bed || "",
@@ -711,7 +724,14 @@ function getDisplayNaps() {
       hasActual,
     });
 
-    cursor = hasActual ? toMinutes(actual.end) : estEnd;
+    if (hasActual) {
+      const actualDuration = toMinutes(actual.end) - toMinutes(actual.start);
+      carryMin = targetDuration - actualDuration;
+      cursor = toMinutes(actual.end);
+    } else {
+      carryMin = 0;
+      cursor = estEnd;
+    }
   });
 
   const bedtime = cursor + BEDTIME_GAP_MIN;
@@ -740,12 +760,14 @@ function renderSchedule() {
   }
   let html = "";
   sched.naps.forEach(nap => {
+    const compMin = nap.targetDuration - nap.configDuration;
+    const compNote = compMin !== 0 ? ` (${compMin > 0 ? "+" : ""}${compMin}m)` : "";
     html += `
       <div class="nap-row">
         <div class="nap-row-head">
           <span class="dot"></span>
           <span class="nap-label">${nap.label}</span>
-          <span class="times">est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}</span>
+          <span class="times">est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}${compNote}</span>
         </div>
         <div class="add-form">
           <div>
@@ -839,6 +861,7 @@ function renderTotals() {
 
 function renderConfig() {
   document.getElementById("config-total-sleep").value = state.config.totalSleepTargetMin / 60;
+  document.getElementById("config-awake-window").value = state.config.awakeWindowMin;
 
   const el = document.getElementById("config-naps-list");
   el.innerHTML = state.config.naps.map((nap, i) => {
@@ -1105,6 +1128,7 @@ async function loadConfig() {
   if (data) {
     state.config = {
       totalSleepTargetMin: data.total_sleep_target_min,
+      awakeWindowMin: data.awake_window_min ?? 120,
       naps: [
         { durationMin: data.nap1_duration_min, enabled: data.nap1_enabled },
         { durationMin: data.nap2_duration_min, enabled: data.nap2_enabled },
@@ -1123,6 +1147,7 @@ async function saveConfig() {
   const row = {
     id: true,
     total_sleep_target_min: c.totalSleepTargetMin,
+    awake_window_min: c.awakeWindowMin,
     nap1_duration_min: c.naps[0].durationMin,
     nap1_enabled: c.naps[0].enabled,
     nap2_duration_min: c.naps[1].durationMin,
@@ -1400,6 +1425,14 @@ document.getElementById("config-total-sleep").addEventListener("change", (e) => 
   if (!isNaN(hours) && hours >= 0) state.config.totalSleepTargetMin = Math.round(hours * 60);
   renderConfig();
   renderTotals();
+  saveConfig();
+});
+
+document.getElementById("config-awake-window").addEventListener("change", (e) => {
+  const val = parseInt(e.target.value, 10);
+  if (!isNaN(val) && val >= 0) state.config.awakeWindowMin = val;
+  renderConfig();
+  render();
   saveConfig();
 });
 
