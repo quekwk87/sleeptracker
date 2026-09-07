@@ -705,11 +705,16 @@ function getDisplayNaps() {
     if (!napCfg.enabled) return;
     const idx = i + 1;
     const actual = state.actualNaps[idx] || { bed: "", start: "", end: "" };
+    const hasStart = !!actual.start;
     const hasActual = !!(actual.start && actual.end);
 
     const targetDuration = Math.max(napCfg.durationMin + carryMin, 0);
     const estStart = cursor + state.config.awakeWindowMin;
     const estEnd = estStart + targetDuration;
+    // Once "Time slept" is logged but "Time wake" isn't yet, predict the
+    // wake time from the real sleep-start plus this nap's target length,
+    // rather than waiting for the wake time to be logged.
+    const predictedEnd = hasStart && !hasActual ? toMinutes(actual.start) + targetDuration : null;
 
     naps.push({
       label: `Nap ${idx}`,
@@ -717,10 +722,11 @@ function getDisplayNaps() {
       isNap4: idx === 4,
       estStart,
       estEnd,
+      predictedEnd,
       targetDuration,
       configDuration: napCfg.durationMin,
-      start: hasActual ? toMinutes(actual.start) : estStart,
-      end: hasActual ? toMinutes(actual.end) : estEnd,
+      start: hasStart ? toMinutes(actual.start) : estStart,
+      end: hasActual ? toMinutes(actual.end) : (predictedEnd ?? estEnd),
       actualBed: actual.bed || "",
       actualStart: actual.start || "",
       actualEnd: actual.end || "",
@@ -731,6 +737,9 @@ function getDisplayNaps() {
       const actualDuration = toMinutes(actual.end) - toMinutes(actual.start);
       carryMin = targetDuration - actualDuration;
       cursor = toMinutes(actual.end);
+    } else if (predictedEnd != null) {
+      carryMin = 0;
+      cursor = predictedEnd;
     } else {
       carryMin = 0;
       cursor = estEnd;
@@ -765,12 +774,15 @@ function renderSchedule() {
   sched.naps.forEach(nap => {
     const compMin = nap.targetDuration - nap.configDuration;
     const compNote = compMin !== 0 ? ` (${compMin > 0 ? "+" : ""}${compMin}m)` : "";
+    const timesText = nap.predictedEnd != null
+      ? `est. wake ${formatDisplay(toHHMM(nap.predictedEnd))}`
+      : `est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}${compNote}`;
     html += `
       <div class="nap-row">
         <div class="nap-row-head">
           <span class="dot"></span>
           <span class="nap-label">${nap.label}</span>
-          <span class="times">est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}${compNote}</span>
+          <span class="times">${timesText}</span>
         </div>
         <div class="add-form">
           <div>
