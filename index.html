@@ -1401,6 +1401,10 @@ document.getElementById("schedule-list").addEventListener("change", (e) => {
   if (!napIdx || !field) return;
   if (!state.actualNaps[napIdx]) state.actualNaps[napIdx] = { bed: "", start: "", end: "" };
   state.actualNaps[napIdx][field] = e.target.value;
+  // A nap's time affects every later nap's estimate (and bedtime), not
+  // just the timeline — re-render the whole schedule, not just the bar.
+  renderSchedule();
+  renderTotals();
   renderTimeline();
   saveSleepLog();
 });
