@@ -544,8 +544,12 @@
           <input type="number" id="config-total-sleep" min="0" step="0.25">
         </div>
         <div>
-          <label for="config-awake-window">Awake window (minutes)</label>
+          <label for="config-awake-window">Between naps (minutes)</label>
           <input type="number" id="config-awake-window" min="0" step="5">
+        </div>
+        <div>
+          <label for="config-bedtime-gap">Before bedtime (minutes)</label>
+          <input type="number" id="config-bedtime-gap" min="0" step="5">
         </div>
       </div>
       <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
@@ -565,14 +569,13 @@ const SUPABASE_URL = "https://boutrcdpsxiuxmoeiqis.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvdXRyY2Rwc3hpdXhtb2VpcWlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTMzNzcsImV4cCI6MjEwMzA2OTM3N30.DZQfchhz3Q9kiAoFJKbvWrlWk96Bkf1n9mHUe_0tDCE";
 // ---------------------------------------------------------------------
 
-const BEDTIME_GAP_MIN = 165;        // 2h45m after last nap ends
-
 // Fallback used before the shared config loads from Supabase (or if
 // nothing has been saved there yet). Editable live via the Settings card.
 function defaultConfig() {
   return {
     totalSleepTargetMin: 16 * 60,
-    awakeWindowMin: 120, // 2h awake before each nap
+    awakeWindowMin: 120,  // awake gap before each nap
+    bedtimeGapMin: 165,   // awake gap before bedtime, after the last nap (2h45m)
     naps: [
       { durationMin: 90, enabled: true },
       { durationMin: 90, enabled: true },
@@ -734,7 +737,7 @@ function getDisplayNaps() {
     }
   });
 
-  const bedtime = cursor + BEDTIME_GAP_MIN;
+  const bedtime = cursor + state.config.bedtimeGapMin;
   return { naps, bedtime };
 }
 
@@ -862,6 +865,7 @@ function renderTotals() {
 function renderConfig() {
   document.getElementById("config-total-sleep").value = state.config.totalSleepTargetMin / 60;
   document.getElementById("config-awake-window").value = state.config.awakeWindowMin;
+  document.getElementById("config-bedtime-gap").value = state.config.bedtimeGapMin;
 
   const el = document.getElementById("config-naps-list");
   el.innerHTML = state.config.naps.map((nap, i) => {
@@ -1129,6 +1133,7 @@ async function loadConfig() {
     state.config = {
       totalSleepTargetMin: data.total_sleep_target_min,
       awakeWindowMin: data.awake_window_min ?? 120,
+      bedtimeGapMin: data.bedtime_gap_min ?? 165,
       naps: [
         { durationMin: data.nap1_duration_min, enabled: data.nap1_enabled },
         { durationMin: data.nap2_duration_min, enabled: data.nap2_enabled },
@@ -1148,6 +1153,7 @@ async function saveConfig() {
     id: true,
     total_sleep_target_min: c.totalSleepTargetMin,
     awake_window_min: c.awakeWindowMin,
+    bedtime_gap_min: c.bedtimeGapMin,
     nap1_duration_min: c.naps[0].durationMin,
     nap1_enabled: c.naps[0].enabled,
     nap2_duration_min: c.naps[1].durationMin,
@@ -1431,6 +1437,14 @@ document.getElementById("config-total-sleep").addEventListener("change", (e) => 
 document.getElementById("config-awake-window").addEventListener("change", (e) => {
   const val = parseInt(e.target.value, 10);
   if (!isNaN(val) && val >= 0) state.config.awakeWindowMin = val;
+  renderConfig();
+  render();
+  saveConfig();
+});
+
+document.getElementById("config-bedtime-gap").addEventListener("change", (e) => {
+  const val = parseInt(e.target.value, 10);
+  if (!isNaN(val) && val >= 0) state.config.bedtimeGapMin = val;
   renderConfig();
   render();
   saveConfig();
