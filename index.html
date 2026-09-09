@@ -307,10 +307,9 @@
     gap: 2px;
   }
   .log-detail { color: var(--muted); font-size: 0.85rem; }
-  .delete-btn {
+  .delete-btn, .edit-btn {
     background: none;
     border: none;
-    color: var(--danger);
     font-size: 1.2rem;
     line-height: 1;
     min-width: 40px;
@@ -321,6 +320,10 @@
     flex-shrink: 0;
     touch-action: manipulation;
   }
+  .delete-btn { color: var(--danger); }
+  .edit-btn { color: var(--muted); font-size: 1rem; }
+  .log-actions { display: flex; flex-shrink: 0; }
+  li.editing { outline: 2px solid var(--accent); }
   .add-form {
     display: flex;
     flex-wrap: wrap;
@@ -476,7 +479,10 @@
           <input type="text" id="drink-remarks" placeholder="optional">
         </div>
       </div>
-      <button class="btn-primary" id="add-drink-btn" style="margin-top:10px; width:100%">Log drink</button>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn-primary" id="add-drink-btn" style="flex:1">Log drink</button>
+        <button class="btn-secondary" id="cancel-drink-edit-btn" style="display:none">Cancel</button>
+      </div>
       <ul class="log-list" id="drink-list" style="margin-top:12px"></ul>
     </div>
   </div>
@@ -641,6 +647,7 @@ let state = {
   poops: [],
   drinks: [],
   nightWakings: [],
+  editingDrinkId: null,
 };
 let loading = false;
 
@@ -1005,12 +1012,15 @@ function renderDrinks() {
       detail = bits.length ? bits.join(" · ") : "breastfeed";
     }
     return `
-      <li>
+      <li${d.id === state.editingDrinkId ? ' class="editing"' : ""}>
         <div class="log-main">
           <span>🍼 ${formatDisplay(d.time)} <span class="log-detail">— ${detail}</span></span>
           ${d.remarks ? `<span class="log-detail">${escapeHtml(d.remarks)}</span>` : ""}
         </div>
-        <button class="delete-btn" data-id="${d.id}" data-kind="drink">✕</button>
+        <div class="log-actions">
+          <button class="edit-btn" data-id="${d.id}" data-kind="drink">✎</button>
+          <button class="delete-btn" data-id="${d.id}" data-kind="drink">✕</button>
+        </div>
       </li>
     `;
   }).join("");
@@ -1064,6 +1074,7 @@ async function loadDay(date) {
   if (!configured) return;
   loading = true;
   setStatus("Loading…");
+  cancelEditDrink();
   try {
     const [sleepRes, poopRes, drinkRes, wakingRes, prevSleepRes] = await Promise.all([
       supabaseClient.from("sleep_log").select("*").eq("date", date).maybeSingle(),
@@ -1259,6 +1270,37 @@ async function deletePoop(id) {
   render();
 }
 
+function startEditDrink(id) {
+  const d = state.drinks.find(x => x.id === id);
+  if (!d) return;
+  state.editingDrinkId = id;
+  document.getElementById("drink-time").value = d.time;
+  document.getElementById("drink-type").value = d.type;
+  const isVolume = d.type === "volume";
+  document.getElementById("volume-fields").style.display = isVolume ? "flex" : "none";
+  document.getElementById("breastfeed-fields").style.display = isVolume ? "none" : "flex";
+  document.getElementById("drink-volume").value = d.volume_ml ?? "";
+  document.getElementById("drink-minutes").value = d.breastfeed_minutes ?? "";
+  document.getElementById("drink-amount").value = d.breastfeed_amount || "";
+  document.getElementById("drink-remarks").value = d.remarks || "";
+  document.getElementById("add-drink-btn").textContent = "Update drink";
+  document.getElementById("cancel-drink-edit-btn").style.display = "block";
+  renderDrinks();
+  document.getElementById("drink-time").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelEditDrink() {
+  state.editingDrinkId = null;
+  document.getElementById("drink-time").value = "";
+  document.getElementById("drink-volume").value = "";
+  document.getElementById("drink-minutes").value = "";
+  document.getElementById("drink-amount").value = "";
+  document.getElementById("drink-remarks").value = "";
+  document.getElementById("add-drink-btn").textContent = "Log drink";
+  document.getElementById("cancel-drink-edit-btn").style.display = "none";
+  renderDrinks();
+}
+
 async function addDrink() {
   if (!configured) { setStatus("Configure Supabase first", true); return; }
   const time = document.getElementById("drink-time").value || nowHHMM();
@@ -1268,20 +1310,27 @@ async function addDrink() {
   if (type === "volume") {
     const val = document.getElementById("drink-volume").value;
     row.volume_ml = val ? Number(val) : null;
+    row.breastfeed_minutes = null;
+    row.breastfeed_amount = null;
   } else {
     const mins = document.getElementById("drink-minutes").value;
     const amt = document.getElementById("drink-amount").value;
     row.breastfeed_minutes = mins ? Number(mins) : null;
     row.breastfeed_amount = amt || null;
+    row.volume_ml = null;
   }
 
-  const { data, error } = await supabaseClient.from("drink_log").insert(row).select().single();
+  const editingId = state.editingDrinkId;
+  const query = editingId
+    ? supabaseClient.from("drink_log").update(row).eq("id", editingId)
+    : supabaseClient.from("drink_log").insert(row);
+  const { data, error } = await query.select().single();
   if (error) {
     console.error(error);
-    setStatus("Failed to log drink: " + error.message, true);
+    setStatus(`Failed to ${editingId ? "update" : "log"} drink: ` + error.message, true);
     return;
   }
-  state.drinks.push({
+  const saved = {
     id: data.id,
     time: data.time.slice(0, 5),
     type: data.type,
@@ -1289,17 +1338,19 @@ async function addDrink() {
     breastfeed_minutes: data.breastfeed_minutes,
     breastfeed_amount: data.breastfeed_amount,
     remarks: data.remarks,
-  });
-  document.getElementById("drink-time").value = "";
-  document.getElementById("drink-volume").value = "";
-  document.getElementById("drink-minutes").value = "";
-  document.getElementById("drink-amount").value = "";
-  document.getElementById("drink-remarks").value = "";
+  };
+  if (editingId) {
+    state.drinks = state.drinks.map(d => d.id === editingId ? saved : d);
+  } else {
+    state.drinks.push(saved);
+  }
+  cancelEditDrink();
   render();
-  setStatus("Drink logged");
+  setStatus(editingId ? "Drink updated" : "Drink logged");
 }
 
 async function deleteDrink(id) {
+  if (state.editingDrinkId === id) cancelEditDrink();
   const { error } = await supabaseClient.from("drink_log").delete().eq("id", id);
   if (error) { console.error(error); setStatus("Delete failed: " + error.message, true); return; }
   state.drinks = state.drinks.filter(d => d.id !== id);
@@ -1434,9 +1485,13 @@ document.getElementById("poop-list").addEventListener("click", (e) => {
   if (btn) deletePoop(btn.dataset.id);
 });
 document.getElementById("drink-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".delete-btn");
-  if (btn) deleteDrink(btn.dataset.id);
+  const deleteBtn = e.target.closest(".delete-btn");
+  if (deleteBtn) { deleteDrink(deleteBtn.dataset.id); return; }
+  const editBtn = e.target.closest(".edit-btn");
+  if (editBtn) startEditDrink(editBtn.dataset.id);
 });
+
+document.getElementById("cancel-drink-edit-btn").addEventListener("click", cancelEditDrink);
 document.getElementById("waking-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".delete-btn");
   if (btn) deleteNightWaking(btn.dataset.id);
