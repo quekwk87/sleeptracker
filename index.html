@@ -357,6 +357,25 @@
     margin: 14px 12px 0;
     font-size: 0.85rem;
   }
+  .poop-indicator {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .poop-indicator.ok {
+    background: var(--bg);
+    color: var(--muted);
+  }
+  .poop-indicator.warn {
+    background: #fdecea;
+    border: 1px solid #f3c4bd;
+    color: #8a2e21;
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -377,6 +396,7 @@
     <h2>📅 Day</h2>
     <label for="date-input">Date</label>
     <input type="date" id="date-input">
+    <div id="last-poop-indicator"></div>
   </div>
 
   <nav class="tabs">
@@ -633,6 +653,14 @@ function addDaysISO(dateStr, delta) {
   return dt.toISOString().slice(0, 10);
 }
 
+function daysBetweenISO(fromISO, toISO) {
+  const [y1, m1, d1] = fromISO.split("-").map(Number);
+  const [y2, m2, d2] = toISO.split("-").map(Number);
+  const a = Date.UTC(y1, m1 - 1, d1);
+  const b = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((b - a) / 86400000);
+}
+
 // ---- state -------------------------------------------------------------
 let state = {
   date: todayISO(),
@@ -648,6 +676,7 @@ let state = {
   drinks: [],
   nightWakings: [],
   editingDrinkId: null,
+  lastPoop: null, // most recent poop across all dates, independent of state.date
 };
 let loading = false;
 
@@ -1142,6 +1171,47 @@ async function loadDay(date) {
   render();
 }
 
+// The most recent poop across ALL dates — independent of whatever date
+// is currently being browsed, since this is a live "how long ago" check.
+async function loadLastPoop() {
+  if (!configured) return;
+  const { data, error } = await supabaseClient
+    .from("poop_log")
+    .select("date, time")
+    .order("date", { ascending: false })
+    .order("time", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return;
+  }
+  state.lastPoop = data ? { date: data.date, time: data.time.slice(0, 5) } : null;
+  renderLastPoopIndicator();
+}
+
+function renderLastPoopIndicator() {
+  const el = document.getElementById("last-poop-indicator");
+  if (!state.lastPoop) {
+    el.innerHTML = `<div class="poop-indicator warn">💩 No poops logged yet</div>`;
+    return;
+  }
+  const daysSince = daysBetweenISO(state.lastPoop.date, todayISO());
+  const timeLabel = formatDisplay(state.lastPoop.time);
+  let text, isWarn;
+  if (daysSince <= 0) {
+    text = `Last poop: today, ${timeLabel}`;
+    isWarn = false;
+  } else if (daysSince === 1) {
+    text = `Last poop: yesterday, ${timeLabel}`;
+    isWarn = false;
+  } else {
+    text = `Last poop: ${daysSince} days ago (${timeLabel})`;
+    isWarn = true;
+  }
+  el.innerHTML = `<div class="poop-indicator ${isWarn ? "warn" : "ok"}">💩 ${text}</div>`;
+}
+
 // Config is a single shared row (id = true), not tied to a date — both
 // parents see and edit the same nap durations / targets.
 async function loadConfig() {
@@ -1260,6 +1330,7 @@ async function addPoop() {
   document.getElementById("poop-time").value = "";
   document.getElementById("poop-remarks").value = "";
   render();
+  loadLastPoop();
   setStatus("Poop logged");
 }
 
@@ -1268,6 +1339,7 @@ async function deletePoop(id) {
   if (error) { console.error(error); setStatus("Delete failed: " + error.message, true); return; }
   state.poops = state.poops.filter(p => p.id !== id);
   render();
+  loadLastPoop();
 }
 
 function startEditDrink(id) {
@@ -1563,6 +1635,7 @@ switchTab(initialTab);
 renderConfig();
 loadConfig();
 loadDay(state.date);
+loadLastPoop();
 setInterval(renderTimeline, 60000);
 </script>
 </body>
