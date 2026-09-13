@@ -20,7 +20,44 @@
     --accent: #e8909f;
     --accent-dark: #d1728a;
     --danger: #d1728a;
+    --warn-bg: #fdecea;
+    --warn-border: #f3c4bd;
+    --warn-text: #8a2e21;
     --radius: 14px;
+  }
+  /* Dark mode: follows the OS setting by default; the toggle button sets
+     data-theme to override it explicitly in either direction. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1a19;
+      --card: #262322;
+      --ink: #f0ece6;
+      --muted: #a89e97;
+      --border: #3a3634;
+      --nap: #7fa8d6;
+      --nap-4: #ab98d9;
+      --poop: #bd935e;
+      --drink: #62ada2;
+      --night: #9c8fe0;
+      --warn-bg: #3a1f1c;
+      --warn-border: #5c2e28;
+      --warn-text: #f0a8a0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1c1a19;
+    --card: #262322;
+    --ink: #f0ece6;
+    --muted: #a89e97;
+    --border: #3a3634;
+    --nap: #7fa8d6;
+    --nap-4: #ab98d9;
+    --poop: #bd935e;
+    --drink: #62ada2;
+    --night: #9c8fe0;
+    --warn-bg: #3a1f1c;
+    --warn-border: #5c2e28;
+    --warn-text: #f0a8a0;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { -webkit-text-size-adjust: 100%; }
@@ -34,12 +71,30 @@
     padding-right: env(safe-area-inset-right);
   }
   header {
+    position: relative;
     padding: calc(20px + env(safe-area-inset-top)) 16px 8px;
     text-align: center;
   }
   header h1 {
     margin: 0;
     font-size: 1.5rem;
+  }
+  .theme-toggle-btn {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
   }
   header .subtitle {
     color: var(--muted);
@@ -349,9 +404,9 @@
   }
   .status.error { color: var(--danger); font-weight: 600; }
   .config-warning {
-    background: #fdecea;
-    border: 1px solid #f3c4bd;
-    color: #8a2e21;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-text);
     padding: 12px;
     border-radius: 10px;
     margin: 14px 12px 0;
@@ -371,9 +426,9 @@
     color: var(--muted);
   }
   .poop-indicator.warn {
-    background: #fdecea;
-    border: 1px solid #f3c4bd;
-    color: #8a2e21;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-text);
     font-weight: 600;
   }
 </style>
@@ -381,6 +436,7 @@
 <body>
 
 <header>
+  <button class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle dark mode">🌓</button>
   <h1>🌙 Avril Tracker</h1>
   <div class="subtitle">naps · poops · feeds · night wakings</div>
 </header>
@@ -1635,6 +1691,37 @@ document.getElementById("config-naps-list").addEventListener("change", (e) => {
   saveConfig();
 });
 
+// ---- theme ------------------------------------------------------------
+// No explicit choice: follows the OS/browser's prefers-color-scheme via
+// CSS alone. A manual toggle stores an explicit override that wins over
+// the system setting in either direction.
+function getThemeOverride() {
+  try { return localStorage.getItem("avril-theme"); } catch (e) { return null; }
+}
+
+function getEffectiveTheme() {
+  const override = getThemeOverride();
+  if (override === "light" || override === "dark") return override;
+  return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+
+function applyTheme() {
+  const override = getThemeOverride();
+  if (override === "light" || override === "dark") {
+    document.documentElement.setAttribute("data-theme", override);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.textContent = getEffectiveTheme() === "dark" ? "🌙" : "☀️";
+}
+
+document.getElementById("theme-toggle-btn").addEventListener("click", () => {
+  const next = getEffectiveTheme() === "dark" ? "light" : "dark";
+  try { localStorage.setItem("avril-theme", next); } catch (e) {}
+  applyTheme();
+});
+
 // ---- tabs -----------------------------------------------------------
 function switchTab(tab) {
   document.querySelectorAll(".tab-panel").forEach(el => {
@@ -1652,6 +1739,10 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
 
 // ---- init -----------------------------------------------------------
 document.getElementById("date-input").value = state.date;
+applyTheme();
+try {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+} catch (e) {}
 let initialTab = "sleep";
 try {
   const saved = localStorage.getItem("avril-active-tab");
