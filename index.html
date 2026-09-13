@@ -818,7 +818,7 @@ function renderSchedule() {
         <div class="nap-row-head">
           <span class="dot"></span>
           <span class="nap-label">${nap.label}</span>
-          <span class="times">${timesText}</span>
+          <span class="times" data-nap-times="${nap.idx}">${timesText}</span>
         </div>
         <div class="add-form">
           <div>
@@ -847,7 +847,7 @@ function renderSchedule() {
       <div class="nap-row-head">
         <span class="dot"></span>
         <span class="nap-label">Bedtime</span>
-        <span class="times">est. ${formatDisplay(toHHMM(sched.bedtime))}</span>
+        <span class="times" data-bedtime-times="1">est. ${formatDisplay(toHHMM(sched.bedtime))}</span>
       </div>
       <div class="add-form">
         <div>
@@ -867,6 +867,29 @@ function renderSchedule() {
       </div>
     </div>`;
   el.innerHTML = html;
+}
+
+// Updates just the "est." text next to each nap and bedtime, without
+// touching the <input> elements. A full renderSchedule() rebuilds the
+// whole list via innerHTML, which destroys and recreates every input —
+// if one of them is a native time picker the user has open (mid-scroll
+// on the wheel), replacing its DOM node forces the picker to close. This
+// is what a nap-time change should call instead, so later estimates
+// update live without disrupting whichever picker is still open.
+function updateNapEstimateTexts() {
+  const sched = getDisplayNaps();
+  if (!sched) return;
+  sched.naps.forEach(nap => {
+    const el = document.querySelector(`[data-nap-times="${nap.idx}"]`);
+    if (!el) return;
+    const compMin = nap.targetDuration - nap.configDuration;
+    const compNote = compMin !== 0 ? ` (${compMin > 0 ? "+" : ""}${compMin}m)` : "";
+    el.textContent = nap.predictedEnd != null
+      ? `est. wake ${formatDisplay(toHHMM(nap.predictedEnd))}`
+      : `est. ${formatDisplay(toHHMM(nap.estStart))}–${formatDisplay(toHHMM(nap.estEnd))}${compNote}`;
+  });
+  const bedEl = document.querySelector('[data-bedtime-times="1"]');
+  if (bedEl) bedEl.textContent = `est. ${formatDisplay(toHHMM(sched.bedtime))}`;
 }
 
 // Nap total only counts naps with a logged actual time — estimates aren't
@@ -1524,9 +1547,12 @@ document.getElementById("schedule-list").addEventListener("change", (e) => {
   if (!napIdx || !field) return;
   if (!state.actualNaps[napIdx]) state.actualNaps[napIdx] = { bed: "", start: "", end: "" };
   state.actualNaps[napIdx][field] = e.target.value;
-  // A nap's time affects every later nap's estimate (and bedtime), not
-  // just the timeline — re-render the whole schedule, not just the bar.
-  renderSchedule();
+  // A nap's time affects every later nap's estimate (and bedtime), so
+  // update those too — but via text-only updates (updateNapEstimateTexts),
+  // never a full renderSchedule() here: that rebuilds every <input> via
+  // innerHTML, which would force-close a native time picker still open
+  // on one of them mid-scroll.
+  updateNapEstimateTexts();
   renderTotals();
   renderTimeline();
   saveSleepLog();
