@@ -566,6 +566,7 @@
   <div class="tab-panel" data-tab="night">
     <div class="card">
       <h2>🌃 Night waking</h2>
+      <div class="legend-hint" style="margin-top:0; margin-bottom:10px">This list covers the whole night, from last night's bedtime through this morning's wake-up. Times from noon onward are treated as last night (before midnight); times before noon are treated as this morning (after midnight) — no need to switch dates to log either half.</div>
       <div class="add-form">
         <div>
           <label for="waking-time">Time</label>
@@ -707,6 +708,25 @@ function addDaysISO(dateStr, delta) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + delta);
   return dt.toISOString().slice(0, 10);
+}
+
+// A "night" spans from last night's bedtime through this morning's wake
+// time, crossing a calendar-date boundary at midnight. Logging happens
+// the next morning while state.date is "today" — a waking entered with
+// an evening/night hour (>= noon) is treated as having happened before
+// midnight, i.e. still "last night" = yesterday relative to state.date;
+// an early-morning hour (< noon) is treated as after midnight, i.e.
+// today. Noon is a safe split point since no real night waking falls
+// there.
+function resolveNightDate(hhmm) {
+  const hour = parseInt(hhmm.split(":")[0], 10);
+  return hour >= 12 ? addDaysISO(state.date, -1) : state.date;
+}
+
+function formatDateLabel(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 function daysBetweenISO(fromISO, toISO) {
@@ -1064,7 +1084,10 @@ function renderTimeline() {
     el.appendChild(mark);
   });
 
-  state.nightWakings.forEach(w => {
+  // Only plot entries actually dated today — this axis is today's 6am-
+  // midnight span, so a merged-in entry from last night (stored under
+  // yesterday's date) has no correct position on it.
+  state.nightWakings.filter(w => w.date === state.date).forEach(w => {
     const left = posPct(toMinutes(w.time));
     const mark = document.createElement("div");
     mark.className = "timeline-block event night";
@@ -1140,7 +1163,10 @@ function renderNightWakings() {
     el.innerHTML = `<li class="empty-hint" style="background:none">No night wakings logged yet</li>`;
     return;
   }
-  const sorted = [...state.nightWakings].sort((a, b) => a.time.localeCompare(b.time));
+  // Sort by the combined date+time so last night's pre-midnight entries
+  // (stored a day earlier) correctly come before this morning's, instead
+  // of a plain time-string sort putting "23:30" after "07:00".
+  const sorted = [...state.nightWakings].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   el.innerHTML = sorted.map(w => {
     let detail = null;
     if (w.drank_milk) {
@@ -1153,10 +1179,11 @@ function renderNightWakings() {
         detail = bits.length ? bits.join(" · ") : "breastfeed";
       }
     }
+    const dayNote = w.date !== state.date ? ` <span class="log-detail">(${formatDateLabel(w.date)})</span>` : "";
     return `
       <li>
         <div class="log-main">
-          <span>🌃 ${formatDisplay(w.time)}${detail ? ` <span class="log-detail">— ${detail}</span>` : ""}</span>
+          <span>🌃 ${formatDisplay(w.time)}${dayNote}${detail ? ` <span class="log-detail">— ${detail}</span>` : ""}</span>
           ${w.remarks ? `<span class="log-detail">${escapeHtml(w.remarks)}</span>` : ""}
         </div>
         <button class="delete-btn" data-id="${w.id}" data-kind="waking">✕</button>
@@ -1184,11 +1211,15 @@ async function loadDay(date) {
   setStatus("Loading…");
   cancelEditDrink();
   try {
-    const [sleepRes, poopRes, drinkRes, wakingRes, prevSleepRes] = await Promise.all([
+    const [sleepRes, poopRes, drinkRes, wakingRes, wakingPrevRes, prevSleepRes] = await Promise.all([
       supabaseClient.from("sleep_log").select("*").eq("date", date).maybeSingle(),
       supabaseClient.from("poop_log").select("*").eq("date", date),
       supabaseClient.from("drink_log").select("*").eq("date", date),
       supabaseClient.from("night_waking_log").select("*").eq("date", date),
+      // Last night's wakings before midnight are stored under yesterday's
+      // date (see resolveNightDate) — pull those in too so viewing today
+      // shows the whole night, not just the after-midnight half.
+      supabaseClient.from("night_waking_log").select("*").eq("date", addDaysISO(date, -1)),
       supabaseClient.from("sleep_log").select("bedtime_estimate, bedtime_actual").eq("date", addDaysISO(date, -1)).maybeSingle(),
     ]);
     const prev = prevSleepRes.data;
@@ -1231,8 +1262,9 @@ async function loadDay(date) {
       breastfeed_amount: d.breastfeed_amount,
       remarks: d.remarks,
     }));
-    state.nightWakings = (wakingRes.data || []).map(w => ({
+    state.nightWakings = [...(wakingPrevRes.data || []), ...(wakingRes.data || [])].map(w => ({
       id: w.id,
+      date: w.date,
       time: w.time.slice(0, 5),
       drank_milk: w.drank_milk,
       type: w.type,
@@ -1514,7 +1546,7 @@ async function addNightWaking() {
   const drankMilk = document.getElementById("waking-milk-toggle").checked;
 
   const row = {
-    date: state.date,
+    date: resolveNightDate(time),
     time: time + ":00",
     drank_milk: drankMilk,
     remarks: document.getElementById("waking-remarks").value || null,
@@ -1541,6 +1573,7 @@ async function addNightWaking() {
   }
   state.nightWakings.push({
     id: data.id,
+    date: data.date,
     time: data.time.slice(0, 5),
     drank_milk: data.drank_milk,
     type: data.type,
