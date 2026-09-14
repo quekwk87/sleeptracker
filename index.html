@@ -465,6 +465,27 @@
 
   <div class="tab-panel" data-tab="sleep">
     <div class="card">
+      <h2>🌙 Last night's bedtime</h2>
+      <div class="log-detail" id="last-night-date-label" style="margin-bottom:10px"></div>
+      <div class="add-form">
+        <div>
+          <label for="lastnight-onbed">Time on bed</label>
+          <input type="time" id="lastnight-onbed">
+        </div>
+        <div>
+          <label for="lastnight-asleep">Time asleep</label>
+          <input type="time" id="lastnight-asleep">
+        </div>
+      </div>
+      <div class="add-form">
+        <div>
+          <label for="lastnight-remarks">Remarks</label>
+          <input type="text" id="lastnight-remarks" placeholder="optional">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>⏰ Wake time</h2>
       <label for="wake-input">This morning's wake-up</label>
       <input type="time" id="wake-input">
@@ -717,6 +738,12 @@ function daysBetweenISO(fromISO, toISO) {
   return Math.round((b - a) / 86400000);
 }
 
+function formatDateLabel(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 // ---- state -------------------------------------------------------------
 let state = {
   date: todayISO(),
@@ -728,6 +755,7 @@ let state = {
   actualBedtime: "",
   bedtimeRemarks: "",
   prevBedtime: "",
+  lastNight: { onBed: "", asleep: "", remarks: "" }, // yesterday's bedtime, editable from today's view
   poops: [],
   drinks: [],
   nightWakings: [],
@@ -847,12 +875,21 @@ function render() {
   document.getElementById("date-input").value = state.date;
   document.getElementById("wake-input").value = state.wakeTime || "";
 
+  renderLastNight();
   renderSchedule();
   renderTotals();
   renderTimeline();
   renderPoops();
   renderDrinks();
   renderNightWakings();
+}
+
+function renderLastNight() {
+  const prevDate = addDaysISO(state.date, -1);
+  document.getElementById("last-night-date-label").textContent = `Adding to ${formatDateLabel(prevDate)}`;
+  document.getElementById("lastnight-onbed").value = state.lastNight.onBed;
+  document.getElementById("lastnight-asleep").value = state.lastNight.asleep;
+  document.getElementById("lastnight-remarks").value = state.lastNight.remarks;
 }
 
 function renderSchedule() {
@@ -1189,12 +1226,17 @@ async function loadDay(date) {
       supabaseClient.from("poop_log").select("*").eq("date", date),
       supabaseClient.from("drink_log").select("*").eq("date", date),
       supabaseClient.from("night_waking_log").select("*").eq("date", date),
-      supabaseClient.from("sleep_log").select("bedtime_estimate, bedtime_actual").eq("date", addDaysISO(date, -1)).maybeSingle(),
+      supabaseClient.from("sleep_log").select("bedtime_estimate, bedtime_actual, bedtime_bed_time, bedtime_remarks").eq("date", addDaysISO(date, -1)).maybeSingle(),
     ]);
     const prev = prevSleepRes.data;
     state.prevBedtime = prev?.bedtime_actual
       ? prev.bedtime_actual.slice(0, 5)
       : (prev?.bedtime_estimate ? prev.bedtime_estimate.slice(0, 5) : "");
+    state.lastNight = {
+      onBed: prev?.bedtime_bed_time ? prev.bedtime_bed_time.slice(0, 5) : "",
+      asleep: prev?.bedtime_actual ? prev.bedtime_actual.slice(0, 5) : "",
+      remarks: prev?.bedtime_remarks || "",
+    };
 
     if (sleepRes.data) {
       const s = sleepRes.data;
@@ -1343,6 +1385,30 @@ async function saveConfig() {
     return;
   }
   setStatus("Settings saved");
+}
+
+// Saves to YESTERDAY's sleep_log row (relative to state.date), not
+// today's — this card exists so a bedtime forgotten last night can be
+// logged from today's view without switching the date picker back.
+async function saveLastNight() {
+  if (!configured) return;
+  const prevDate = addDaysISO(state.date, -1);
+  const row = {
+    date: prevDate,
+    bedtime_bed_time: state.lastNight.onBed ? state.lastNight.onBed + ":00" : null,
+    bedtime_actual: state.lastNight.asleep ? state.lastNight.asleep + ":00" : null,
+    bedtime_remarks: state.lastNight.remarks || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabaseClient.from("sleep_log").upsert(row, { onConflict: "date" });
+  if (error) {
+    console.error(error);
+    setStatus("Failed to save last night: " + error.message, true);
+    return;
+  }
+  state.prevBedtime = state.lastNight.asleep || state.prevBedtime;
+  renderTotals();
+  setStatus("Last night saved");
 }
 
 async function saveSleepLog() {
@@ -1575,6 +1641,19 @@ document.getElementById("wake-input").addEventListener("change", (e) => {
   state.wakeTime = e.target.value;
   render();
   saveSleepLog();
+});
+
+document.getElementById("lastnight-onbed").addEventListener("change", (e) => {
+  state.lastNight.onBed = e.target.value;
+  saveLastNight();
+});
+document.getElementById("lastnight-asleep").addEventListener("change", (e) => {
+  state.lastNight.asleep = e.target.value;
+  saveLastNight();
+});
+document.getElementById("lastnight-remarks").addEventListener("change", (e) => {
+  state.lastNight.remarks = e.target.value;
+  saveLastNight();
 });
 
 document.getElementById("schedule-list").addEventListener("change", (e) => {
