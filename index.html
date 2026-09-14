@@ -96,6 +96,24 @@
     justify-content: center;
     touch-action: manipulation;
   }
+  .date-nav-btn {
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .date-nav-btn:disabled {
+    opacity: 0.35;
+  }
   header .subtitle {
     color: var(--muted);
     font-size: 0.85rem;
@@ -451,7 +469,11 @@
   <div class="card">
     <h2>📅 Day</h2>
     <label for="date-input">Date</label>
-    <input type="date" id="date-input">
+    <div style="display:flex; gap:8px; align-items:center">
+      <button class="date-nav-btn" id="prev-day-btn" aria-label="Previous day">◀</button>
+      <input type="date" id="date-input" style="flex:1">
+      <button class="date-nav-btn" id="next-day-btn" aria-label="Next day">▶</button>
+    </div>
     <div id="last-poop-indicator"></div>
   </div>
 
@@ -865,6 +887,7 @@ function getDisplayNaps() {
 // ---- rendering ---------------------------------------------------------
 function render() {
   document.getElementById("date-input").value = state.date;
+  document.getElementById("next-day-btn").disabled = state.date >= todayISO();
   document.getElementById("wake-input").value = state.wakeTime || "";
 
   renderSchedule();
@@ -1601,6 +1624,17 @@ async function deleteNightWaking(id) {
 // ---- event wiring --------------------------------------------------------
 document.getElementById("date-input").addEventListener("change", (e) => {
   state.date = e.target.value;
+  loadDay(state.date);
+});
+
+document.getElementById("prev-day-btn").addEventListener("click", () => {
+  state.date = addDaysISO(state.date, -1);
+  loadDay(state.date);
+});
+
+document.getElementById("next-day-btn").addEventListener("click", () => {
+  if (state.date >= todayISO()) return;
+  state.date = addDaysISO(state.date, 1);
   loadDay(state.date);
 });
 
