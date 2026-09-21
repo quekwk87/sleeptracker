@@ -753,7 +753,7 @@ function resolveNightDate(hhmm) {
 function formatDateLabel(iso) {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 function daysBetweenISO(fromISO, toISO) {
@@ -1345,7 +1345,7 @@ function renderLastPoopIndicator() {
     text = `Last poop: yesterday, ${timeLabel}`;
     isWarn = false;
   } else {
-    text = `Last poop: ${daysSince} days ago (${timeLabel})`;
+    text = `Last poop: ${formatDateLabel(state.lastPoop.date)}, ${timeLabel} (${daysSince} days ago)`;
     isWarn = true;
   }
   el.innerHTML = `<div class="poop-indicator ${isWarn ? "warn" : "ok"}">💩 ${text}</div>`;
