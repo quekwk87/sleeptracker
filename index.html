@@ -430,7 +430,7 @@
     margin: 14px 12px 0;
     font-size: 0.85rem;
   }
-  .poop-indicator {
+  .poop-indicator, .info-chip {
     margin-top: 10px;
     padding: 10px 12px;
     border-radius: 10px;
@@ -439,7 +439,7 @@
     align-items: center;
     gap: 8px;
   }
-  .poop-indicator.ok {
+  .poop-indicator.ok, .info-chip {
     background: var(--bg);
     color: var(--muted);
   }
@@ -542,6 +542,7 @@
   <div class="tab-panel" data-tab="drink">
     <div class="card">
       <h2>🍼 Drink log</h2>
+      <div id="expected-volume-info" class="info-chip"></div>
       <div class="add-form">
         <div>
           <label for="drink-time">Time</label>
@@ -665,6 +666,21 @@
       <div id="config-naps-list" class="schedule-list" style="margin-top:12px"></div>
       <div class="legend-hint">Shared by both parents — changes here apply to everyone's estimates.</div>
     </div>
+
+    <div class="card">
+      <h2>🍼 Feeding</h2>
+      <div class="add-form">
+        <div>
+          <label for="config-weight">Weight (kg)</label>
+          <input type="number" id="config-weight" min="0" step="0.1" inputmode="decimal">
+        </div>
+        <div>
+          <label for="config-feed-interval">Feed interval (hours)</label>
+          <input type="number" id="config-feed-interval" min="0" step="0.5" inputmode="decimal">
+        </div>
+      </div>
+      <div class="legend-hint">Used to estimate expected volume per feed (weight × 150ml ÷ feeds per day), shown on the Drink tab.</div>
+    </div>
   </div>
 
   <div class="status" id="status"></div>
@@ -686,6 +702,8 @@ function defaultConfig() {
     totalSleepTargetMin: 16 * 60,
     awakeWindowMin: 120,  // awake gap before each nap
     bedtimeGapMin: 165,   // awake gap before bedtime, after the last nap (2h45m)
+    weightKg: 7,
+    feedIntervalHours: 3,
     naps: [
       { durationMin: 90, enabled: true },
       { durationMin: 90, enabled: true },
@@ -820,6 +838,20 @@ function escapeAttr(str) {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// Standard rough feeding guideline: ~150ml per kg of body weight per day,
+// spread evenly across however many feeds fit in 24h at the configured
+// interval. E.g. 7kg, fed every 3h -> 8 feeds/day -> 7*150/8 = 131.25ml
+// per feed.
+function getExpectedFeedVolume() {
+  const weight = state.config.weightKg;
+  const interval = state.config.feedIntervalHours;
+  if (!weight || !interval) return null;
+  const feedsPerDay = 24 / interval;
+  const dailyTotalMl = weight * 150;
+  const perFeedMl = dailyTotalMl / feedsPerDay;
+  return { perFeedMl, feedsPerDay, dailyTotalMl };
 }
 
 // ---- schedule computation --------------------------------------------
@@ -1037,10 +1069,25 @@ function renderTotals() {
     (nightMin == null ? `<div class="empty-hint">Night sleep needs today's wake time and yesterday's bedtime estimate</div>` : "");
 }
 
+function renderExpectedVolume() {
+  const el = document.getElementById("expected-volume-info");
+  if (!el) return;
+  const expected = getExpectedFeedVolume();
+  if (!expected) {
+    el.textContent = "🍼 Set weight and feed interval in Settings to see expected volume per feed.";
+    return;
+  }
+  const feedsLabel = Number.isInteger(expected.feedsPerDay) ? expected.feedsPerDay : expected.feedsPerDay.toFixed(1);
+  el.textContent = `🍼 Expected ~${Math.round(expected.perFeedMl)}ml per feed (${feedsLabel} feeds/day, ~${Math.round(expected.dailyTotalMl)}ml/day)`;
+}
+
 function renderConfig() {
   document.getElementById("config-total-sleep").value = state.config.totalSleepTargetMin / 60;
   document.getElementById("config-awake-window").value = state.config.awakeWindowMin;
   document.getElementById("config-bedtime-gap").value = state.config.bedtimeGapMin;
+  document.getElementById("config-weight").value = state.config.weightKg;
+  document.getElementById("config-feed-interval").value = state.config.feedIntervalHours;
+  renderExpectedVolume();
 
   const el = document.getElementById("config-naps-list");
   el.innerHTML = state.config.naps.map((nap, i) => {
@@ -1366,6 +1413,8 @@ async function loadConfig() {
       totalSleepTargetMin: data.total_sleep_target_min,
       awakeWindowMin: data.awake_window_min ?? 120,
       bedtimeGapMin: data.bedtime_gap_min ?? 165,
+      weightKg: data.weight_kg ?? 7,
+      feedIntervalHours: data.feed_interval_hours ?? 3,
       naps: [
         { durationMin: data.nap1_duration_min, enabled: data.nap1_enabled },
         { durationMin: data.nap2_duration_min, enabled: data.nap2_enabled },
@@ -1386,6 +1435,8 @@ async function saveConfig() {
     total_sleep_target_min: c.totalSleepTargetMin,
     awake_window_min: c.awakeWindowMin,
     bedtime_gap_min: c.bedtimeGapMin,
+    weight_kg: c.weightKg,
+    feed_interval_hours: c.feedIntervalHours,
     nap1_duration_min: c.naps[0].durationMin,
     nap1_enabled: c.naps[0].enabled,
     nap2_duration_min: c.naps[1].durationMin,
@@ -1744,6 +1795,20 @@ document.getElementById("config-bedtime-gap").addEventListener("change", (e) => 
   if (!isNaN(val) && val >= 0) state.config.bedtimeGapMin = val;
   renderConfig();
   render();
+  saveConfig();
+});
+
+document.getElementById("config-weight").addEventListener("change", (e) => {
+  const val = parseFloat(e.target.value);
+  if (!isNaN(val) && val >= 0) state.config.weightKg = val;
+  renderConfig();
+  saveConfig();
+});
+
+document.getElementById("config-feed-interval").addEventListener("change", (e) => {
+  const val = parseFloat(e.target.value);
+  if (!isNaN(val) && val > 0) state.config.feedIntervalHours = val;
+  renderConfig();
   saveConfig();
 });
 
