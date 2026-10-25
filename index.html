@@ -675,8 +675,8 @@
           <input type="number" id="config-weight" min="0" step="0.1" inputmode="decimal">
         </div>
         <div>
-          <label for="config-feed-interval">Feed interval (hours)</label>
-          <input type="number" id="config-feed-interval" min="0" step="0.5" inputmode="decimal">
+          <label for="config-feeds-per-day">Feeds per day</label>
+          <input type="number" id="config-feeds-per-day" min="1" step="1" inputmode="numeric">
         </div>
       </div>
       <div class="legend-hint">Used to estimate expected volume per feed (weight × 150ml ÷ feeds per day), shown on the Drink tab.</div>
@@ -703,7 +703,7 @@ function defaultConfig() {
     awakeWindowMin: 120,  // awake gap before each nap
     bedtimeGapMin: 165,   // awake gap before bedtime, after the last nap (2h45m)
     weightKg: 7,
-    feedIntervalHours: 3,
+    feedsPerDay: 8,
     naps: [
       { durationMin: 90, enabled: true },
       { durationMin: 90, enabled: true },
@@ -841,14 +841,12 @@ function escapeAttr(str) {
 }
 
 // Standard rough feeding guideline: ~150ml per kg of body weight per day,
-// spread evenly across however many feeds fit in 24h at the configured
-// interval. E.g. 7kg, fed every 3h -> 8 feeds/day -> 7*150/8 = 131.25ml
-// per feed.
+// spread evenly across however many feeds you do in a day. E.g. 7kg fed
+// 8 times a day -> 7*150/8 = 131.25ml per feed.
 function getExpectedFeedVolume() {
   const weight = state.config.weightKg;
-  const interval = state.config.feedIntervalHours;
-  if (!weight || !interval) return null;
-  const feedsPerDay = 24 / interval;
+  const feedsPerDay = state.config.feedsPerDay;
+  if (!weight || !feedsPerDay) return null;
   const dailyTotalMl = weight * 150;
   const perFeedMl = dailyTotalMl / feedsPerDay;
   return { perFeedMl, feedsPerDay, dailyTotalMl };
@@ -1074,7 +1072,7 @@ function renderExpectedVolume() {
   if (!el) return;
   const expected = getExpectedFeedVolume();
   if (!expected) {
-    el.textContent = "🍼 Set weight and feed interval in Settings to see expected volume per feed.";
+    el.textContent = "🍼 Set weight and feeds per day in Settings to see expected volume per feed.";
     return;
   }
   const feedsLabel = Number.isInteger(expected.feedsPerDay) ? expected.feedsPerDay : expected.feedsPerDay.toFixed(1);
@@ -1086,7 +1084,7 @@ function renderConfig() {
   document.getElementById("config-awake-window").value = state.config.awakeWindowMin;
   document.getElementById("config-bedtime-gap").value = state.config.bedtimeGapMin;
   document.getElementById("config-weight").value = state.config.weightKg;
-  document.getElementById("config-feed-interval").value = state.config.feedIntervalHours;
+  document.getElementById("config-feeds-per-day").value = state.config.feedsPerDay;
   renderExpectedVolume();
 
   const el = document.getElementById("config-naps-list");
@@ -1414,7 +1412,7 @@ async function loadConfig() {
       awakeWindowMin: data.awake_window_min ?? 120,
       bedtimeGapMin: data.bedtime_gap_min ?? 165,
       weightKg: data.weight_kg ?? 7,
-      feedIntervalHours: data.feed_interval_hours ?? 3,
+      feedsPerDay: data.number_of_feeds_per_day ?? 8,
       naps: [
         { durationMin: data.nap1_duration_min, enabled: data.nap1_enabled },
         { durationMin: data.nap2_duration_min, enabled: data.nap2_enabled },
@@ -1436,7 +1434,7 @@ async function saveConfig() {
     awake_window_min: c.awakeWindowMin,
     bedtime_gap_min: c.bedtimeGapMin,
     weight_kg: c.weightKg,
-    feed_interval_hours: c.feedIntervalHours,
+    number_of_feeds_per_day: c.feedsPerDay,
     nap1_duration_min: c.naps[0].durationMin,
     nap1_enabled: c.naps[0].enabled,
     nap2_duration_min: c.naps[1].durationMin,
@@ -1805,9 +1803,9 @@ document.getElementById("config-weight").addEventListener("change", (e) => {
   saveConfig();
 });
 
-document.getElementById("config-feed-interval").addEventListener("change", (e) => {
+document.getElementById("config-feeds-per-day").addEventListener("change", (e) => {
   const val = parseFloat(e.target.value);
-  if (!isNaN(val) && val > 0) state.config.feedIntervalHours = val;
+  if (!isNaN(val) && val > 0) state.config.feedsPerDay = val;
   renderConfig();
   saveConfig();
 });

@@ -100,7 +100,7 @@ create table if not exists app_config (
   awake_window_min integer not null default 120,
   bedtime_gap_min integer not null default 165,
   weight_kg numeric not null default 7,
-  feed_interval_hours numeric not null default 3,
+  number_of_feeds_per_day numeric not null default 8,
   nap1_duration_min integer not null default 90,
   nap1_enabled boolean not null default true,
   nap2_duration_min integer not null default 90,
@@ -114,7 +114,22 @@ create table if not exists app_config (
 alter table app_config add column if not exists awake_window_min integer not null default 120;
 alter table app_config add column if not exists bedtime_gap_min integer not null default 165;
 alter table app_config add column if not exists weight_kg numeric not null default 7;
-alter table app_config add column if not exists feed_interval_hours numeric not null default 3;
+alter table app_config add column if not exists number_of_feeds_per_day numeric;
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_name = 'app_config' and column_name = 'feed_interval_hours'
+  ) then
+    update app_config
+      set number_of_feeds_per_day = case when feed_interval_hours > 0 then 24 / feed_interval_hours else 8 end
+      where number_of_feeds_per_day is null;
+    alter table app_config drop column feed_interval_hours;
+  end if;
+end $$;
+alter table app_config alter column number_of_feeds_per_day set default 8;
+update app_config set number_of_feeds_per_day = 8 where number_of_feeds_per_day is null;
+alter table app_config alter column number_of_feeds_per_day set not null;
 insert into app_config (id) values (true) on conflict (id) do nothing;
 
 create index if not exists poop_log_date_idx on poop_log (date);
